@@ -120,6 +120,63 @@ mvn test  →  65 个用例全绿（改之前 31 个）
 
 ---
 
+## 2026-10-03 · 数据库索引：补 practice_record 的 (session_id, is_correct)
+
+先把 12 张表的索引逐个对着**真实库**核对了一遍（不只是看 DDL 文件），结论是**只缺一处**。
+
+### 加的索引
+
+```sql
+ALTER TABLE practice_record ADD KEY idx_pr_session_correct (session_id, is_correct);
+```
+
+**为什么需要**：答题时有两处查询按 `(session_id, is_correct)` 过滤，而且**每提交一题就跑一遍**：
+
+- `PracticeSessionMapper.refreshCounts` —— 重算会话的已答/答对数（两遍 COUNT 带 `is_correct`）
+- `PracticeRecordMapper.selectWrongItems` —— 查本次会话的错题明细（`is_correct = 0`）
+
+原有索引是 `uk_pr_session_question (session_id, question_id)`：能用上 `session_id` 前缀，
+但 **`is_correct` 不在索引里** —— 所以要把该会话的全部记录逐行取回来再过滤。
+
+一个 500 题的会话，每答一题扫 500 行，整个会话累计约 **12.5 万行**；
+加上这个索引后可以直接跳到匹配项。
+
+**列顺序有讲究**：`session_id` 在前（等值过滤、区分度高），`is_correct` 在后（会话内部再收窄）。
+
+### 验证
+
+```
+EXPLAIN SELECT COUNT(*) FROM practice_record WHERE session_id=14 AND is_correct=1;
+
+  key: idx_pr_session_correct | ref: const,const | Extra: Using index
+                                                  ↑ 覆盖索引，连回表都省了
+```
+
+**诚实说明**：本地库 `practice_record` 只有 7 行，所以另一条查询
+（`selectWrongItem` 的 `is_correct = 0`）优化器仍选了旧索引 ——
+数据量小的时候索引基数太低，优化器判断不准，这是正常行为，不是索引没用。
+**这个索引的收益在当前数据量下无法实测**，是按查询模式推算的。
+
+### 核对后决定**不加**的索引（不是遗漏）
+
+| 候选 | 为什么不加 |
+|---|---|
+| `question.bank_id` | 已有 `idx_question_bank_chapter(bank_id, chapter_id)` 和 `idx_question_bank_type(bank_id, type)`，按最左前缀就能走索引；单加一个只会多占空间、拖慢写入 |
+| `import_task.status` / `created_at` | 任务只按主键 `task_id` 查，不按状态扫表 |
+| `chat_session.title` / `message_count` | 区分度极低，且没有查询按它们过滤 |
+| `practice_record.is_correct` 单列 | 布尔列区分度只有 2，没意义；必须和 `session_id` 组合才有用（就是上面加的那个） |
+
+> 索引不是越多越好：每个索引都会拖慢写入、占空间，且**基数是自增统计的，加了低区分度索引反而可能误导优化器**。
+
+### 涉及文件
+
+```
+新增  asteria-server/src/main/resources/db/practice_record_index.sql   可重复执行的迁移脚本
+改动  docs/改造计划.md                                                  阶段 4 标注 DB1 已完成
+```
+
+---
+
 ## 2026-10-03 · 决定：随机抽题保持原样（不做策略化改造）
 
 **决定**：`PracticeServiceImpl` 的随机抽题**保持现状**（全量取 id + `Collections.shuffle`），
