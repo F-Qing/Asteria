@@ -1,0 +1,1 @@
+import{G as t,M as o,S as s,Q as r,L as n}from"./vendor-BtDxEGf_.js";import{_ as c}from"./index-CyqzNTNY.js";const l=t({__name:"SoftTag",props:{variant:{default:"blue-gray"}},setup(a){return(e,p)=>(n(),o("span",{class:s(["soft-tag",a.variant])},[r(e.$slots,"default",{},void 0,!0)],2))}}),m=c(l,[["__scopeId","data-v-ce2ba074"]]);export{m as S};

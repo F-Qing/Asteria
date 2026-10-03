@@ -82,23 +82,70 @@ public class BanksServiceImpl implements BanksService {
     private static final int MAX_PAGE_SIZE = 200;
 
     /**
-     * 「账号/服务商级失败」的识别词。
+     * 把"账号级失败"归类成**给用户看的一句话**。
      *
-     * <p>为什么用「关键词匹配消息」而不是解析上游错误码：AI 服务商五花八门（OpenAI 兼容网关、
-     * 各家云厂商），错误体格式各不相同，真正稳定的信号是消息文本本身。
-     * 宁可漏判（漏判只是多跑几道注定失败的题），不可乱判 —— 所以词表只收
-     * 「出现就说明整个账号不可用」的词，不收"超时""格式错"这类可能只是单题问题的词。
+     * <p><b>为什么不能把服务商报文直接给用户看</b>：真实报文长这样 ——
+     * <pre>
+     * 401 - {"error":{"message":"Authentication Fails, Your api key: *****5e65 is invalid
+     *        (request_id: 07158b0d-d8d4-4fef-ac49-a9f6678ce6d6)"}}
+     * </pre>
+     * 对用户来说这串东西**没有信息量**：他不知道 401 是什么、也不知道该点哪里。
+     * 用户需要知道的只有两件事：<b>哪出了问题</b> + <b>他该做什么</b>。
+     * 原始报文仍然进日志（排查要用），但不出现在界面上。
      *
-     * <p>英文词一律小写：比较前会把消息转成小写。中文词不受影响。
-     * 401/402/429 是 HTTP 语义里最硬的一组信号：鉴权失效 / 欠费 / 限流。
+     * <p><b>为什么按这个顺序判</b>：DeepSeek 对"余额不足"返回的是 <b>429</b> 而不是 402，
+     * 报文里写的却是 "Insufficient Balance"。所以必须先按**报文关键词**判，
+     * 最后才用状态码兜底 —— 否则余额不足会被误报成"请求太频繁"，把用户引向错误的处理方式。
+     *
+     * @return 给用户看的一句话原因；返回 null 表示"这不是账号级问题，只是单题失败"
      */
-    private static final List<String> SYSTEMIC_AI_KEYWORDS = List.of(
-            // 英文：余额不足 / 配额 / 限流 / 请求过多 / 余额
-            "insufficient", "quota", "rate limit", "too many requests", "balance",
-            // 中文：国内网关（DeepSeek、通义等）常见的说法
-            "余额", "欠费", "限流", "频率",
-            // 状态码
-            "401", "402", "429");
+    String classifyAiFailure(Throwable e) {
+        StringBuilder all = new StringBuilder();
+        Throwable t = e;
+        for (int depth = 0; t != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            if (t.getMessage() != null) {
+                all.append(t.getMessage()).append(' ');
+            }
+            Throwable cause = t.getCause();
+            if (cause == t) {
+                break;
+            }
+            t = cause;
+        }
+        String lower = all.toString().toLowerCase(Locale.ROOT);
+
+        // ① 余额/配额：必须先判 —— DeepSeek 的欠费也是 429，靠状态码会误判成限流
+        if (containsAny(lower, "insufficient", "quota", "balance", "余额", "欠费")) {
+            return "AI 账户余额不足或配额已用完，请充值后重试";
+        }
+        // ② 鉴权：Key 写错/失效/被删。
+        //    注意这些词只用来**判断类别**，命中的那条消息本身不会给用户看（见上面的说明）
+        if (containsAny(lower, "authentication", "unauthorized", "invalid api key",
+                "invalid_api_key", "api key", "401", "403")) {
+            return "AI 账号鉴权失败，请到「设置」页检查 API Key 是否填写正确";
+        }
+        // ③ 限流：请求太频繁（报文里明确说了才算，避免和 ①② 抢）
+        if (containsAny(lower, "rate limit", "too many requests", "429", "频率", "限流")) {
+            return "AI 请求过于频繁被限流，请稍等几分钟再重试";
+        }
+        // ④ 认不出来 → 返回 null，**当作单题失败处理**
+        //
+        //    ⚠️ 这里绝不能"兜底返回一句笼统的话"：那样任何一次普通失败（模型抽风、JSON 格式错、
+        //    这道题超时）都会被升级成"账号级问题"，进而把整批中断 —— 用户会遇到
+        //    "50 道题只解析了 1 道就全停了"，比"漏判成单题失败"严重得多。
+        //    宁可漏判（多跑几道注定失败的题），不可乱判。
+        return null;
+    }
+
+    /** 文本里是否包含任意一个关键词（关键词都必须是小写） */
+    private static boolean containsAny(String haystack, String... keywords) {
+        for (String k : keywords) {
+            if (haystack.contains(k)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /**
      * 沿 {@code getCause()} 链最多看几层。
@@ -325,17 +372,14 @@ public class BanksServiceImpl implements BanksService {
                 // ⚠️ 前端 BankImportView.vue 靠 "AI 解析中断：" 这个前缀区分"真回滚"和"题库已入库"，
                 //    改这句文案必须同步改那边的判断（changing either side breaks the other）
                 //
-                // ⚠️ 为什么「已完成 N 道」要写在原因【前面】：
-                //    这条消息最终会经过 briefReason() 截断到 MAX_REASON_LENGTH(200) 字。
-                //    而 systemicReason 是服务商原样回显的报文（可能上百字），
-                //    如果把它放前面，截断时会把「已完成 N 道 / 还差 M 道」这些**用户真正要的信息**吃掉。
-                //    把长文本放最后，它被截掉不影响用户知道"解析到哪了、下一步干什么"。
+                // 文案只放两样东西：**哪出了问题**（systemicReason，已经分类过的一句话）
+                // 和 **用户该做什么**。服务商原始报文不出现在这里 ——
+                // 用户看不懂 "401" 和 "request_id"，那串东西只进日志。
                 int completed = outcome.totalCount() - aiOutcome.failedCount();
                 throw new BusinessException(40021,
-                        "AI 解析中断：已完成 " + completed + " 道，还有 " + aiOutcome.failedCount()
-                                + " 道未解析（已完成的题目可以正常使用）。"
-                                + "请检查 AI 账号后重新上传以补齐。原因："
-                                + aiOutcome.systemicReason());
+                        "AI 解析中断：" + aiOutcome.systemicReason() + "。"
+                                + "已完成 " + completed + " 道题的解析（可正常使用），"
+                                + "还有 " + aiOutcome.failedCount() + " 道未解析，处理后重新上传即可补齐。");
             }
 
             // ⑤ 内存状态：成功（内存不属于数据库事务，所以在事务外更新；AI 跑完才到这里）
@@ -501,12 +545,15 @@ public class BanksServiceImpl implements BanksService {
                     } catch (Exception e) {
                         failed.incrementAndGet();
                         markEnrichFailed(question, aiConfig, e);
-                        // 再算一次脱敏原因：markEnrichFailed 里那份只写进了题目行，
-                        // 账号级失败还要把它带到任务级（前端失败卡片直接显示的就是这句）
-                        String reason = AiErrors.mask(e, aiConfig);
-                        if (isSystemicAiFailure(e)) {
-                            systemicReason.compareAndSet(null, reason);
-                            log.error("AI 解析遇到账号级问题，本次提前结束：taskId={}, 原因={}", taskId, reason);
+                        // 判断是不是账号级问题。是的话：
+                        //   ① 只记第一次（后面都是同一个原因的重复）
+                        //   ② 记录的是**给用户看的一句话**，不是服务商原始报文 ——
+                        //      原始报文只进日志，界面上不出现（用户看不懂 401 和 request_id）
+                        String friendly = classifyAiFailure(e);
+                        if (friendly != null) {
+                            systemicReason.compareAndSet(null, friendly);
+                            log.error("AI 解析遇到账号级问题，本次提前结束：taskId={}, 原因={}, 原始报文={}",
+                                    taskId, friendly, AiErrors.mask(e, aiConfig));
                         }
                     } finally {
                         limiter.release();
@@ -541,37 +588,6 @@ public class BanksServiceImpl implements BanksService {
         log.info("AI 解析结束：taskId={}, 成功{}题, 失败{}题（失败的题已标 FAILED，下次可续跑）",
                 taskId, okCount, failed.get());
         return new EnrichOutcome(failed.get(), systemicReason.get());
-    }
-
-    /**
-     * 这个异常是不是账号/服务商级别的问题（不是我某道题的问题）。
-     * 命中这些时下一道题也一定会失败，应该立刻停手。
-     *
-     * <p>沿 cause 链逐层看消息：Spring AI 会把上游报错包一两层，
-     * 真正写着 "insufficient balance" 的那句往往在最里层 —— 只看最外层的 message 会漏判。
-     *
-     * <p>包级可见而不是 private：单元测试要直接断言这些关键词的判定结果。
-     */
-    boolean isSystemicAiFailure(Throwable e) {
-        Throwable t = e;
-        for (int depth = 0; t != null && depth < MAX_CAUSE_DEPTH; depth++) {
-            String msg = t.getMessage();
-            if (msg != null && !msg.isBlank()) {
-                String lower = msg.toLowerCase(Locale.ROOT);
-                for (String keyword : SYSTEMIC_AI_KEYWORDS) {
-                    if (lower.contains(keyword)) {
-                        return true;
-                    }
-                }
-            }
-            Throwable cause = t.getCause();
-            // 自引用（有些包装异常会把自己设成自己的 cause）会让循环停不下来
-            if (cause == t) {
-                break;
-            }
-            t = cause;
-        }
-        return false;
     }
 
     /**

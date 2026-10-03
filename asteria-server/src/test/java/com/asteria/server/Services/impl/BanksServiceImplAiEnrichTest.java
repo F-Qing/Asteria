@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -122,46 +123,79 @@ class BanksServiceImplAiEnrichTest {
         assertNull(outcome.systemicReason());
     }
 
-    // ========== 账号级失败的识别 ==========
+    // ========== 账号级失败的识别与归类 ==========
+    //
+    // classifyAiFailure 返回的是【给用户看的一句话】（不是服务商原始报文），
+    // 所以这里断言的是"归到哪一类"，不是"原样透传了什么"。
 
     @Test
-    @DisplayName("余额不足（英文 insufficient balance）→ 判为账号级失败")
-    void should_detectInsufficientBalance() {
-        assertTrue(banksService.isSystemicAiFailure(
-                new RuntimeException("Error: insufficient balance, please top up")));
+    @DisplayName("Key 无效（真实报文，带 request_id 和 Key 片段）→ 提示去设置页检查 API Key")
+    void should_classifyInvalidKey() {
+        // 这是用户实际遇到的报文形状
+        String raw = "401 - {\"error\":{\"message\":\"Authentication Fails, Your api key: "
+                + "*****5e65 is invalid (request_id: 07158b0d-d8d4-4fef-ac49-a9f6678ce6d6)\"}}";
+
+        String friendly = banksService.classifyAiFailure(new RuntimeException(raw));
+
+        assertNotNull(friendly, "401 必须被判成账号级失败");
+        assertTrue(friendly.contains("API Key"), "要给用户可执行的指引，实际：" + friendly);
+        // 关键：不能把原始报文透给用户
+        assertFalse(friendly.contains("request_id"), "不该把服务商报文透给用户，实际：" + friendly);
+        assertFalse(friendly.contains("5e65"), "不该泄露 Key 片段，实际：" + friendly);
     }
 
     @Test
-    @DisplayName("限流（429 / rate limit）→ 判为账号级失败")
-    void should_detectRateLimit() {
-        assertTrue(banksService.isSystemicAiFailure(
-                new RuntimeException("HTTP 429 Too Many Requests")));
-        assertTrue(banksService.isSystemicAiFailure(
-                new RuntimeException("rate limit exceeded, retry later")));
+    @DisplayName("余额不足（英文 insufficient balance）→ 提示充值")
+    void should_classifyInsufficientBalance() {
+        String friendly = banksService.classifyAiFailure(
+                new RuntimeException("Error: insufficient balance, please top up"));
+
+        assertNotNull(friendly);
+        assertTrue(friendly.contains("余额") || friendly.contains("配额"), "实际：" + friendly);
     }
 
     @Test
-    @DisplayName("中文原因（余额不足 / 请求频率过高）→ 也能识别")
-    void should_detectChineseReason() {
-        assertTrue(banksService.isSystemicAiFailure(new RuntimeException("账户余额不足，请充值后重试")));
-        assertTrue(banksService.isSystemicAiFailure(new RuntimeException("请求频率过高，已被限流")));
+    @DisplayName("余额不足但状态码是 429（DeepSeek 的实际行为）→ 必须归类为余额，不能误报成限流")
+    void should_preferBalanceOver429() {
+        // DeepSeek 欠费返回 429 + "Insufficient Balance"；按状态码判会误报成"请求太频繁"，
+        // 把用户引向错误的处理方式（等几分钟），而实际该去充值
+        String raw = "429 - {\"error\":{\"message\":\"Insufficient Balance\"}}";
+
+        String friendly = banksService.classifyAiFailure(new RuntimeException(raw));
+
+        assertNotNull(friendly);
+        assertTrue(friendly.contains("余额") || friendly.contains("配额"),
+                "欠费的报文必须归到余额类，实际：" + friendly);
+        assertFalse(friendly.contains("频繁"), "不能误报成限流，实际：" + friendly);
     }
 
     @Test
-    @DisplayName("原因包在 cause 里（Spring AI 会再包一层）→ 仍能识别")
-    void should_detectSystemicFailure_inNestedCause() {
+    @DisplayName("限流（rate limit）→ 提示稍后重试")
+    void should_classifyRateLimit() {
+        String a = banksService.classifyAiFailure(new RuntimeException("rate limit exceeded, retry later"));
+        String b = banksService.classifyAiFailure(new RuntimeException("请求频率过高，已被限流"));
+
+        assertNotNull(a);
+        assertNotNull(b);
+        assertTrue(a.contains("频繁") || a.contains("稍"), "实际：" + a);
+        assertTrue(b.contains("频繁") || b.contains("稍"), "实际：" + b);
+    }
+
+    @Test
+    @DisplayName("原因包在 cause 里（Spring AI 会再包一层）→ 仍能归类")
+    void should_classifySystemicFailure_inNestedCause() {
         Throwable wrapped = new RuntimeException("ChatModel call failed",
                 new IllegalStateException("insufficient quota"));
 
-        assertTrue(banksService.isSystemicAiFailure(wrapped));
+        assertNotNull(banksService.classifyAiFailure(wrapped));
     }
 
     @Test
-    @DisplayName("普通单题错误（AI 没返回可用解析）→ 不能误判成账号级失败")
+    @DisplayName("普通单题错误（AI 没返回可用解析）→ 返回 null，不算账号级失败")
     void should_notFlagNormalSingleQuestionError() {
-        assertFalse(banksService.isSystemicAiFailure(
+        assertNull(banksService.classifyAiFailure(
                 new IllegalStateException("AI 没有返回可用的解析内容")));
-        assertFalse(banksService.isSystemicAiFailure(
+        assertNull(banksService.classifyAiFailure(
                 new RuntimeException("JSON 解析失败：Unexpected end of input")));
     }
 
@@ -175,7 +209,7 @@ class BanksServiceImplAiEnrichTest {
                 return this;
             }
         };
-        assertFalse(banksService.isSystemicAiFailure(selfReference));
+        assertNull(banksService.classifyAiFailure(selfReference));
 
         // A → B → A：自引用检查发现不了，只能靠层数上限兜住
         Throwable[] pair = new Throwable[2];
@@ -191,7 +225,7 @@ class BanksServiceImplAiEnrichTest {
                 return pair[0];
             }
         };
-        assertFalse(banksService.isSystemicAiFailure(pair[0]));
+        assertNull(banksService.classifyAiFailure(pair[0]));
     }
 
     // ========== 账号级失败后的善后 ==========
@@ -207,8 +241,9 @@ class BanksServiceImplAiEnrichTest {
 
         assertEquals(2, outcome.failedCount());
         assertTrue(outcome.abortedBySystemIssue());
-        assertTrue(outcome.systemicReason().contains("insufficient balance"),
-                "系统性失败的原因要能带到任务级（前端失败卡片显示的就是它）");
+        // 带到任务级的是【给用户看的一句话】，不是服务商原始报文
+        assertTrue(outcome.systemicReason().contains("余额") || outcome.systemicReason().contains("配额"),
+                "要归类成用户看得懂的话，实际：" + outcome.systemicReason());
         // markEnrichFailed 走 updateById（单题行），批次级"改回 PENDING"走 update(条件更新) ——
         // 验证后者被调用，说明 aiEnrich 确实把善后接上了，而不是只记了个标记
         verify(questionMapper).update(isNull(), any());
@@ -291,13 +326,13 @@ class BanksServiceImplAiEnrichTest {
      * <ol>
      *   <li><b>前缀必须是 {@code AI 解析中断：}</b> —— 前端 {@code BankImportView.vue} 靠它区分
      *       "真回滚（题库没建成）" 和 "题库已入库只是没解析完"，改前缀会让那边静默失效；</li>
-     *   <li><b>「已完成 N 道」必须排在服务商报文之前</b> —— 整条消息最终会被
-     *       {@code briefReason()} 截断到 200 字，而报文可能上百字；
-     *       把计数放在报文后面，报文一长就把用户最需要的信息截掉了。</li>
+     *   <li><b>消息里不能出现服务商原始报文</b> —— 早期版本把
+     *       {@code 401 - {"error":...request_id...}} 整串显示给用户，既看不懂又带着 Key 片段。
+     *       现在原因只走 {@code classifyAiFailure()} 的分类结果，报文只进日志。</li>
      * </ol>
      */
     @Test
-    @DisplayName("40021 的措辞契约：前缀不能变，且「已完成」必须在服务商报文之前")
+    @DisplayName("40021 的措辞契约：前缀不能变，且不能把服务商原始报文透给用户")
     void should_keep40021MessageContract() throws Exception {
         String source = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "src/main/java/com/asteria/server/Services/impl/BanksServiceImpl.java"));
@@ -306,13 +341,13 @@ class BanksServiceImplAiEnrichTest {
         assertTrue(source.contains("\"AI 解析中断：\""),
                 "前缀「AI 解析中断：」是前端判断依据，改了要同步改 BankImportView.vue（全角冒号）");
 
-        // ② 顺序：计数的位置必须早于 systemicReason() 的拼接位置。
-        //    按"最后一次出现"定位更稳 —— 注释里也提到了 systemicReason，按首次出现会定位到注释而不是代码。
-        int countPos = source.indexOf("\"AI 解析中断：已完成 \"");
-        int reasonPos = source.lastIndexOf("aiOutcome.systemicReason()");
-        assertTrue(countPos > 0, "找不到「AI 解析中断：已完成」的拼装，可能被改写了");
-        assertTrue(reasonPos > countPos,
-                "服务商报文必须排在「已完成 N 道」【之后】—— 否则 briefReason 的 200 字截断会吃掉计数信息"
-                        + "（countPos=" + countPos + ", reasonPos=" + reasonPos + "）");
+        // ② 分类结果必须是一句固定的话，长度可控 —— 这样即使有截断也不会丢关键信息
+        String friendly = banksService.classifyAiFailure(
+                new RuntimeException("401 - {\"error\":{\"message\":\"Authentication Fails, "
+                        + "Your api key: *****5e65 is invalid (request_id: 07158b0d-d8d4-4fef-ac49-a9f6678ce6d6)\"}}"));
+        assertNotNull(friendly);
+        assertTrue(friendly.length() < 60,
+                "给用户看的原因必须是一句短话（这样整条消息远低于 briefReason 的 200 字截断线），实际长度="
+                        + friendly.length() + "：" + friendly);
     }
 }
