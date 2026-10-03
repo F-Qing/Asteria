@@ -13,10 +13,13 @@ import com.asteria.pojo.entity.VO.BankResultVO;
 import com.asteria.pojo.entity.VO.BanksVO;
 import com.asteria.pojo.entity.VO.ChapterVO;
 import com.asteria.pojo.entity.VO.PageResultVO;
+import com.asteria.pojo.enums.AiStatus;
+import com.asteria.pojo.enums.AnswerSource;
 import com.asteria.pojo.enums.ImportStatus;
 import com.asteria.server.Services.BanksImportTransactional;
 import com.asteria.server.Services.BanksService;
 import com.asteria.server.ai.AiQuestionExtractor;
+import com.asteria.server.ai.AiErrors;
 import com.asteria.server.ai.AiRequestConfig;
 import com.asteria.server.ai.QuestionAiEnricher;
 import com.asteria.server.mapper.BankMapper;
@@ -40,6 +43,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -47,6 +51,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 @Slf4j
@@ -55,6 +63,17 @@ public class BanksServiceImpl implements BanksService {
     /** 与接口文档约定一致：docx / pdf / txt、单文件 ≤ 20MB */
     private static final Set<String> ALLOWED_EXT = Set.of("docx", "pdf", "txt");
     private static final long MAX_SIZE_BYTES = 20L * 1024 * 1024;
+
+    /**
+     * AI 解析的并发度：同时最多有几个模型请求在飞。
+     *
+     * <p>为什么是 6 而不是更大：每个线程处理完要从连接池拿一条数据库连接写回结果。
+     * HikariCP 默认池大小是 10，翻译进度、写题目、写任务状态都要占连接 ——
+     * 开到 6 既能让模型请求充分并发（瓶颈在网络往返，不在本地），又给数据库留了余量。
+     *
+     * <p>调大之前先确认：① 服务商允许的并发/限流额度 ② 连接池是否跟着调大了。
+     */
+    private static final int AI_CONCURRENCY = 6;
     /** 存进 error_message 的摘要长度上限（列宽 500，这里留足余量） */
     private static final int MAX_REASON_LENGTH = 200;
     /** 分页查询单页上限，防止有人传 pageSize=100000 拉全表 */
@@ -331,55 +350,147 @@ public class BanksServiceImpl implements BanksService {
     // ========== AI 解析阶段 ==========
 
     /**
-     * 把刚入库的题查出来，逐题补解析（原本缺答案的顺带补答案）。
+     * 给刚入库的题补解析（原本缺答案的顺带补答案）。
      *
-     * <p>进度 = 已处理题数 / 总题数 × 100：每题更新内存（前端 1.5s 轮询能看到它涨），
-     * 每 5 题落一次数据库（服务重启后 DB 兜底也有个大致进度）。
+     * <p><b>相比上一版改了三件事</b>：
+     * <ol>
+     *   <li><b>并发</b>：以前是一道一道串行调模型 —— 500 题的库要等 500 次往返。
+     *       现在用<b>虚拟线程</b>并发跑，信号量控制同时在飞的请求数。
+     *       JDK 21 的虚拟线程专为"大量等待 I/O"设计：一次模型调用大部分时间都在等网络，
+     *       虚拟线程在等待时几乎不占操作系统线程，所以开几百个也不贵。</li>
+     *   <li><b>可续跑</b>：只捞 {@code ai_status} 还没到 DONE 的题。
+     *       模型调用是要花钱的，而且<b>不是幂等的</b>（重试就真的再付一次钱），
+     *       所以崩了之后必须只重跑没做完的，不能把已经花钱解析过的题再跑一遍。</li>
+     *   <li><b>可追溯</b>：每题记下解析状态、失败原因、以及答案是谁写的（文件还是 AI）。</li>
+     * </ol>
+     *
+     * <p><b>为什么并发度不能随便开大</b>：每个线程都要从连接池拿一条数据库连接来写回结果。
+     * 并发度超过连接池大小（HikariCP 默认 10）时，超出的线程会排队等连接，
+     * 并发就失去意义了。所以这里用 {@value #AI_CONCURRENCY} 留出余量。
      *
      * <p>单题失败只记账不中断 —— 不能因为第 37 题超时就让前 36 题的解析白做。
+     * 失败的题会被标成 FAILED 并记下原因，下次续跑时自然会被重新捞出来。
      */
     private void aiEnrich(String taskId, Long bankId, AiRequestConfig aiConfig) {
+        // 只捞"还没解析成功"的题：PENDING（没碰过）+ FAILED（上次失败，重试）
         List<Question> questions = questionMapper.selectList(
-                Wrappers.<Question>lambdaQuery().eq(Question::getBankId, bankId));
+                Wrappers.<Question>lambdaQuery()
+                        .eq(Question::getBankId, bankId)
+                        .ne(Question::getAiStatus, AiStatus.DONE.name()));
         int total = questions.size();
-        log.info("AI 解析开始：taskId={}, bankId={}, 共{}题", taskId, bankId, total);
+        if (total == 0) {
+            log.info("AI 解析：没有需要处理的题，跳过。taskId={}, bankId={}", taskId, bankId);
+            return;
+        }
+        log.info("AI 解析开始：taskId={}, bankId={}, 待处理{}题, 并发度{}", taskId, bankId, total, AI_CONCURRENCY);
 
         updateTask(taskId, ImportStatus.AI_PROCESSING.name(), 0, total, bankId);
 
-        int done = 0;
-        int failed = 0;
-        for (Question question : questions) {
-            try {
-                QuestionAiEnricher.EnrichResult result = questionAiEnricher.enrich(question, aiConfig);
+        // done 用原子类：多个线程会同时 +1
+        AtomicInteger done = new AtomicInteger();
+        AtomicInteger failed = new AtomicInteger();
+        // 进度写库要串行，否则多个线程同时 update 同一行会互相覆盖
+        Object progressLock = new Object();
 
-                Question patch = new Question();
-                patch.setId(question.getId());
-                patch.setAnalysis(result.analysis());
-                if (result.answer() != null) {        // null = 这题原本有答案，不动它
-                    patch.setAnswer(result.answer());
-                }
-                questionMapper.updateById(patch);     // 只更新非 null 字段
+        // 虚拟线程执行器：适合"任务多、每个都在等 I/O"的场景。
+        // try-with-resources 的 close() 会等所有任务跑完 —— 这里必须等，不然方法返回了题还没处理完。
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // Semaphore 而不是固定大小线程池：JEP 444 明确建议不要用池来限制虚拟线程的并发，
+            // 而是用信号量。这样"限制并发"和"用虚拟线程"两件事解耦。
+            Semaphore limiter = new Semaphore(AI_CONCURRENCY);
 
-            } catch (Exception e) {
-                failed++;
-                log.warn("AI 解析失败（第 {} 题）：questionId={}, 原因={}",
-                        done + 1, question.getId(), e.getClass().getSimpleName() + ": " + e.getMessage());
+            for (Question question : questions) {
+                executor.submit(() -> {
+                    try {
+                        limiter.acquire();      // 拿不到名额就在这里等，最多 AI_CONCURRENCY 个在飞
+                    } catch (InterruptedException ie) {
+                        // 被中断（服务正在关闭）：把中断标志还回去，然后放弃这道题。
+                        // 它仍然是 PENDING，下次续跑会重新捞到，不会丢。
+                        Thread.currentThread().interrupt();
+                        log.warn("AI 解析被中断，放弃剩余任务：questionId={}", question.getId());
+                        return;
+                    }
+                    try {
+                        enrichOne(question, aiConfig);
+                    } catch (Exception e) {
+                        failed.incrementAndGet();
+                        markEnrichFailed(question, aiConfig, e);
+                    } finally {
+                        limiter.release();
+                    }
+
+                    int finished = done.incrementAndGet();
+                    int progress = (int) (finished * 100L / total);
+                    synchronized (progressLock) {
+                        updateTask(taskId, ImportStatus.AI_PROCESSING.name(), progress, total, bankId);
+                        // 每 5 题落一次数据库：内存进度是给前端轮询看的，
+                        // 落库是为了服务重启后 DB 里也有个大致进度
+                        if (finished % 5 == 0 || finished == total) {
+                            bankImportMapper.updateById(BankImport.builder()
+                                    .taskId(taskId)
+                                    .progress(progress)
+                                    .build());
+                        }
+                    }
+                });
             }
-
-            done++;
-            int progress = (int) (done * 100L / total);
-            updateTask(taskId, ImportStatus.AI_PROCESSING.name(), progress, total, bankId);
-
-            if (done % 5 == 0 || done == total) {
-                bankImportMapper.updateById(BankImport.builder()
-                        .taskId(taskId)
-                        .progress(progress)
-                        .build());
-            }
+        } catch (Exception e) {
+            // 走到这里说明线程池本身出了问题（提交任务失败等），题级异常都在上面被吃掉了
+            log.error("AI 解析批处理异常：taskId={}", taskId, e);
         }
 
-        // 失败题数只记日志：前端 SUCCESS 卡片不展示 errorMessage，写进去用户也看不见
-        log.info("AI 解析结束：taskId={}, 成功{}题, 失败{}题", taskId, total - failed, failed);
+        int okCount = total - failed.get();
+        log.info("AI 解析结束：taskId={}, 成功{}题, 失败{}题（失败的题已标 FAILED，下次可续跑）",
+                taskId, okCount, failed.get());
+    }
+
+    /**
+     * 处理一道题：调模型 → 写回解析（缺答案时连答案一起写）。
+     *
+     * <p>成功和失败的落库都只有**一次 update**，状态和内容一起写 —— 避免"内容写了但状态没写"
+     * 造成下一次续跑重复处理（重复处理就等于重复花钱）。
+     */
+    private void enrichOne(Question question, AiRequestConfig aiConfig) {
+        QuestionAiEnricher.EnrichResult result = questionAiEnricher.enrich(question, aiConfig);
+
+        Question patch = new Question();
+        patch.setId(question.getId());
+        patch.setAnalysis(result.analysis());
+        patch.setAiStatus(AiStatus.DONE.name());
+        patch.setAiError(null);                     // 之前失败过的，这次成功了要把错误清掉
+        patch.setAiEnrichedAt(LocalDateTime.now());
+        if (result.answerFromAi()) {
+            // 只有"原本缺答案、这次由模型补出来"才动 answer，并且标明来源是 AI。
+            // 原本就有答案的题绝不覆盖 —— 文件里的答案比模型的可信。
+            patch.setAnswer(result.answer());
+            patch.setAnswerSource(AnswerSource.AI.name());
+        }
+        questionMapper.updateById(patch);
+    }
+
+    /**
+     * 记录一道题的失败：状态、脱敏后的原因、重试次数。
+     *
+     * <p>必须<b>独立于上面的写回</b>：一次模型调用失败不能把题目已有的解析也抹掉，
+     * 所以这里只更新状态相关的列。
+     *
+     * <p>失败原因要脱敏 —— 上游报错可能把请求内容回显出来，里面可能有 API Key。
+     */
+    private void markEnrichFailed(Question question, AiRequestConfig aiConfig, Exception e) {
+        String reason = AiErrors.mask(e, aiConfig);
+        log.warn("AI 解析失败：questionId={}, 原因={}", question.getId(), reason);
+        try {
+            Question patch = new Question();
+            patch.setId(question.getId());
+            patch.setAiStatus(AiStatus.FAILED.name());
+            patch.setAiError(reason);
+            // 重试次数 +1：用来识别"一直失败"的题，避免续跑时无限重试烧钱
+            patch.setAiRetryCount((question.getAiRetryCount() == null ? 0 : question.getAiRetryCount()) + 1);
+            questionMapper.updateById(patch);
+        } catch (Exception ex) {
+            // 连失败状态都写不进去（数据库也挂了？）：只记日志，不让它把整个批处理带崩
+            log.error("写入 AI 失败状态时又出错：questionId={}", question.getId(), ex);
+        }
     }
 
     /** 更新内存里的任务快照（前端轮询读的就是它） */

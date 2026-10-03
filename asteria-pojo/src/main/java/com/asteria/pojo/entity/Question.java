@@ -8,7 +8,6 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-
 /**
  * 题目实体，对应 finaltext.question 表。
  *
@@ -39,6 +38,27 @@ public class Question {
     private String analysis;
     /** 知识点标签 JSON 数组：["知识点1","知识点2"]；接入 AI 后填写 */
     private String knowledgePoints;
+
+    /**
+     * AI 解析状态：PENDING 未解析 / DONE 成功 / FAILED 失败（取值见 {@code AiStatus}）。
+     *
+     * <p>断点续跑只捞非 DONE 的题 —— 模型调用是要花钱的，而且重试真的要再付一次，
+     * 所以必须记清楚哪些题已经解析过。
+     */
+    private String aiStatus;
+    /** AI 解析失败原因（已脱敏、可能被截断到 500 字） */
+    private String aiError;
+    /** 重试次数：用来识别"一直失败"的题，避免无限重试烧钱 */
+    private Integer aiRetryCount;
+    /**
+     * 答案来源：FILE 原文解析 / AI 模型推断 / MANUAL 人工修改（取值见 {@code AnswerSource}）。
+     *
+     * <p>数据血缘：AI 补的答案必须能区分出来，否则人工复核和回滚都无从下手。
+     */
+    private String answerSource;
+    /** AI 补解析完成时间 */
+    private LocalDateTime aiEnrichedAt;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

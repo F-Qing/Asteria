@@ -5,6 +5,8 @@ import com.asteria.pojo.entity.Bank;
 import com.asteria.pojo.entity.BankImport;
 import com.asteria.pojo.entity.Chapter;
 import com.asteria.pojo.entity.Question;
+import com.asteria.pojo.enums.AiStatus;
+import com.asteria.pojo.enums.AnswerSource;
 import com.asteria.pojo.enums.ImportStatus;
 import com.asteria.pojo.enums.QuestionType;
 import com.asteria.server.mapper.BankMapper;
@@ -151,6 +153,12 @@ public class BanksImportTransactional {
             question.setStem(stem.trim());
             question.setOptions(objectMapper.writeValueAsString(rawQuestion.getRawOptions()));
             question.setAnswer(answer);
+            // AI 状态与答案来源显式写死，不依赖数据库默认值：
+            //   刚入库的题一定「还没解析」，答案一定「来自文件」。
+            //   写死的好处是断点续跑的逻辑不依赖 DDL 默认值 —— 换库、改默认值都不会影响它。
+            question.setAiStatus(AiStatus.PENDING.name());
+            question.setAiRetryCount(0);
+            question.setAnswerSource(AnswerSource.FILE.name());
             questionMapper.insert(question);
             inserted++;
         }

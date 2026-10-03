@@ -34,8 +34,25 @@ public class QuestionAiEnricher {
     public record AiAnswer(String answer, String analysis) {
     }
 
-    /** 给调用方的结果：answer 为 null 表示"不改答案" */
-    public record EnrichResult(String answer, String analysis) {
+    /**
+     * 给调用方的结果。
+     *
+     * @param analysis     解析文本（一定非空，否则会抛异常）
+     * @param answer       模型解出来的答案；{@code null} = 这题原本就有答案，不要动它
+     * @param answerFromAi {@code true} = 答案来自模型（原本缺答案）→ 调用方要把它标记成 AI 来源；
+     *                     {@code false} = 答案沿用原文，来源不变
+     */
+    public record EnrichResult(String analysis, String answer, boolean answerFromAi) {
+
+        /** 只补了解析、没动答案 */
+        public static EnrichResult analysisOnly(String analysis) {
+            return new EnrichResult(analysis, null, false);
+        }
+
+        /** 连答案一起补了（原本缺答案） */
+        public static EnrichResult withAnswer(String analysis, String answer) {
+            return new EnrichResult(analysis, answer, true);
+        }
     }
 
     /**
@@ -78,18 +95,19 @@ public class QuestionAiEnricher {
         }
         String analysis = ai.analysis().trim();
 
-        // 缺答案 → 把 AI 解出来的答案也一起写回去
+        // 缺答案 → 把 AI 解出来的答案也一起写回去，并标明来源是 AI
         if (answerMissing) {
             String answer = normalizeAiAnswer(ai.answer(), question.getType());
             if (answer == null) {
                 log.warn("AI 返回的答案格式不合法，只保留解析：questionId={}, type={}, raw={}",
                         question.getId(), question.getType(), ai.answer());
+                return EnrichResult.analysisOnly(analysis);
             }
-            return new EnrichResult(answer, analysis);
+            return EnrichResult.withAnswer(analysis, answer);
         }
 
-        // 原本有答案 → 只写解析，不碰 answer
-        return new EnrichResult(null, analysis);
+        // 原本有答案 → 只写解析，不碰 answer，来源保持 FILE
+        return EnrichResult.analysisOnly(analysis);
     }
 
     /** 把题型 / 题干 / 选项 / 现有答案拼成给模型看的内容 */

@@ -120,6 +120,103 @@ mvn test  →  65 个用例全绿（改之前 31 个）
 
 ---
 
+## 2026-10-03 · AI 解析改造：并发 + 断点续跑 + 数据血缘
+
+### 改了什么
+
+上一批修完 bug 后，AI 解析的三个硬伤开始处理。**核心认知是一条**：模型调用要花钱，而且**不是幂等的**——重试就真的再付一次钱。所以"记录做没做过"比"跑得快"更重要。
+
+**1. 并发解析（原来是一道一道串行）**
+
+原来 500 道题就是 500 次串行网络往返，约 25 分钟，而 CPU 全程闲着（典型的 I/O 密集）。
+
+- 改用 **JDK 21 虚拟线程**（`Executors.newVirtualThreadPerTaskExecutor()`）并发跑
+- 用 **`Semaphore(6)`** 限制同时在飞的请求数 —— 并发度按数据库连接池反推：HikariCP 默认 10 条连接，进度和任务状态也要写库，所以留余量取 6
+- 为什么不用固定大小线程池：JEP 444 明确建议不要用池来限制虚拟线程的并发，而是用信号量。这两件事应该解耦
+
+**2. 断点续跑（原来崩了要全部重跑）**
+
+- 新增 `question.ai_status`（PENDING / DONE / FAILED）+ `ai_error` + `ai_retry_count`
+- 每次只捞**没到 DONE** 的题，所以崩溃后重跑只处理没做完的那部分，不重复付费
+- 失败的题标 FAILED 并记下脱敏后的原因，下次续跑自然会被重新捞到
+
+**3. 数据血缘（原来分不清答案是文件写的还是 AI 猜的）**
+
+- 新增 `question.answer_source`（FILE / AI / MANUAL）+ `ai_enriched_at`
+- `QuestionAiEnricher.EnrichResult` 加了 `answerFromAi` 标记，把"这个答案是模型给的"显式表达出来（原来只靠 `answer == null` 隐含表达，语义不清）
+- 关键保证：**题目原本有答案时，绝不用 AI 结果覆盖** —— 文件里的答案比模型可信
+- 存量数据不需要手工处理：`answer_source` 默认 `FILE`，加列之前的答案确实都来自原文
+
+**4. 数据库迁移脚本**
+
+`db/question_ai_columns.sql`：用 `information_schema` 判断列是否存在再决定要不要加，**可重复执行**（MySQL 的 `ADD COLUMN IF NOT EXISTS` 只在 8.0.29+ 支持，这样写兼容更老的 8.0，也不会重复执行报 1060）。
+
+已在本地库执行，5 列 + 1 索引全部就位，存量 133 道题自动拿到正确默认值。
+
+### 并发下的正确性处理
+
+| 问题 | 处理 |
+|---|---|
+| 多线程同时 +1 | 计数用 `AtomicInteger` |
+| 多线程同时写同一行任务进度 → 互相覆盖 | 进度写库加 `synchronized` |
+| 信号量名额泄漏 | `release()` 放 `finally` |
+| 中断（服务关闭） | 捕获 `InterruptedException`，归还中断标志后放弃该题；该题仍是 PENDING，续跑不丢 |
+
+### 怎么验证的
+
+```
+mvn test  →  80 个用例全绿（改造前 65 个）
+```
+
+新增 15 个用例（`QuestionAiEnricherTest`）：
+
+- **返回值契约**：`analysisOnly` / `withAnswer` 两个工厂的语义（`answerFromAi` 有没有正确表达血缘）
+- **提示词**：已有答案时要带上原答案并声明"以它为准"；缺答案时要求模型解出来；不同题型给不同格式要求
+- **答案格式校验**：单选只认单字母、多选去重升序、判断题各种写法收敛到 A/B、填空/简答原样保留
+- **端到端**（模型用 Mockito 替身）：缺答案时补出来并标 AI 来源；有答案时绝不覆盖；格式不合法只丢答案保解析；LaTeX 公式不被改坏；解析为空要抛异常
+- **回归护栏**：源码里必须还调用 `AiJsonRepair.repairBackslashes`（防止有人顺手删掉上一批的修复）
+
+### 踩过的坑
+
+- **`Semaphore.acquire()` 抛受检异常**：并发改造第一次编译不过，`InterruptedException` 必须处理。修法不是简单吞掉，而是**归还中断标志再退出** —— 吞掉中断会让服务无法优雅关闭
+- **Mockito 不允许嵌套 stub**：`when(factory.create(any(), any())).thenReturn(mock(Model.class))` 会抛 `UnfinishedStubbingException`，因为 `when(...)` 参数里又调了 `mock()`。必须先把替身造好再设行为
+- **测试假设错了**：我原本断言"多选只给一个字母要丢掉"，但实际代码接受 `A`。想了一下是**测试写错了而不是代码错了**：题型已经由文件确定为多选，模型只是补了个答案，因为"只有一个字母"就丢掉会让这道题永远没答案。改成断言接受，并把理由写进注释
+- **新增实体字段必须同步迁移数据库**：给 `Question` 加字段后，MyBatis-Plus 的 SELECT 会带上这些列，**列不存在就全线报错**。所以 DDL 必须和代码一起交付
+
+### 涉及文件
+
+```
+新增  asteria-server/src/main/resources/db/question_ai_columns.sql
+新增  asteria-pojo/src/main/java/com/asteria/pojo/enums/AiStatus.java
+新增  asteria-pojo/src/main/java/com/asteria/pojo/enums/AnswerSource.java
+新增  asteria-server/src/test/java/com/asteria/server/ai/QuestionAiEnricherTest.java
+新增  docs/学习笔记-AI解析优化.md
+
+改动  Question.java                加 5 个字段（ai_status/ai_error/ai_retry_count/answer_source/ai_enriched_at）
+改动  BanksServiceImpl.java        aiEnrich 改并发 + 只捞未完成；新增 enrichOne / markEnrichFailed
+改动  BanksImportTransactional.java 入库时显式写死 ai_status=PENDING、answer_source=FILE
+改动  QuestionAiEnricher.java      EnrichResult 加 answerFromAi 标记 + 两个工厂方法
+```
+
+### 下一步（未做）
+
+- [ ] 批量调用（一次请求多道题）—— 但要先实测前缀缓存的影响，见 `docs/演进方向-总体方案.md`
+- [ ] 失败重试上限（`ai_retry_count` 已经在记，但还没用它做"失败 N 次就不再试"）
+- [ ] 解析质量闸门：答案一致性校验 + UI 标"AI 生成" + 用户报错回流
+- [ ] 前端暴露 `answer_source`，让用户能看出哪些解析是 AI 补的
+
+### 顺带：调研发现的一个解析器隐患（未修，记录备查）
+
+调研学习通官方文档时发现一条**语义冲突**：
+
+> 超星官方对填空题的定义是「多个空答案**用空格隔开**，一个空有多个答案**用分号『；』隔开**」
+
+而当前 `QuestionParser` 是按 `；` **切分答案**。这意味着：**填空题有多个空时，切出来的结构会和官方语义不一致**——官方用 `；` 表示"同一个空的多种写法"，我们把它当成了"多个空的分隔符"。
+
+用户目前的数据里**一道填空题都没有**（7 个文件全是单选+判断），所以这个隐患还没暴露。等真的要支持填空题时需要重新设计切分规则。详见 `docs/改造计划.md`。
+
+---
+
 ## 更早的改动
 
 本文件从 2026-10-03 开始记录。之前的改动见 git 提交历史：
