@@ -3,6 +3,9 @@
 > 这份文档假设你**没写过并发代码，也没深入用过 AI 接口**。
 > 每个概念我都会先打比方，再说它在代码里长什么样。
 >
+> 📎 **配套**：[学习笔记-并发代码精讲.md](学习笔记-并发代码精讲.md) —— **并发代码写在哪、完整语法逐行拆解**。
+> 本文讲"**为什么**这么改"，那篇讲"**代码具体怎么写**"。建议对照着看。
+>
 > 对应改动见 [CHANGELOG.md](../CHANGELOG.md)。
 
 ---
@@ -157,6 +160,9 @@ ExecutorService pool = Executors.newFixedThreadPool(20);
 // 虚拟线程写法：每来一个任务就新开一个虚拟线程
 ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 ```
+
+> ⚠️ 这几行在项目里的**具体位置**、以及完整可运行的上下文（`try (...)`、`submit`、lambda、信号量怎么配合），
+> 见 [学习笔记-并发代码精讲.md](学习笔记-并发代码精讲.md) 第 0~2 章 —— 那里把每一行都拆开讲了。
 
 ⚠️ **一个重要细节**：`try (...)` 这种写法叫 **try-with-resources**。
 `executor.close()` 会自动等**所有任务跑完**才返回。

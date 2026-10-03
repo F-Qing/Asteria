@@ -191,6 +191,7 @@ mvn test  →  80 个用例全绿（改造前 65 个）
 新增  asteria-pojo/src/main/java/com/asteria/pojo/enums/AnswerSource.java
 新增  asteria-server/src/test/java/com/asteria/server/ai/QuestionAiEnricherTest.java
 新增  docs/学习笔记-AI解析优化.md
+新增  docs/学习笔记-并发代码精讲.md
 
 改动  Question.java                加 5 个字段（ai_status/ai_error/ai_retry_count/answer_source/ai_enriched_at）
 改动  BanksServiceImpl.java        aiEnrich 改并发 + 只捞未完成；新增 enrichOne / markEnrichFailed
