@@ -112,14 +112,21 @@ public class QuestionQualityCheck {
                     issues.add(new Issue(seq, "选项重复", "同一题里出现了重复的选项字母：" + keys));
                 }
 
-                // ⑤ 答案越界 —— 最有价值的一条
+                // ⑤ 答案越界 —— 最有价值的一条，但判定要小心，踩过两次坑：
+                //
+                //   坑1：不能用 Character.isLetter() —— 它对中文也返回 true，
+                //        而判断题答案是中文（「对」/「错」），那样每道判断题都会误报。
+                //   坑2：不能扫整段答案 —— 学习通导出的答案是「字母；答案全文;」这种形式，
+                //        全文里的英文会被当成答案字母。实测：答案 "D；标签...HTML元素;"
+                //        被解析出 [H, T, M, L] 四个"越界字母"，而真正该看的是开头的 D。
+                //
+                // 所以只取**开头的连续 ASCII 字母**（选项字母跟分隔符之间那段），
+                // 遇到中文、标点、空格就停 —— 后面的解释文字一律不看。
                 List<String> bad = new ArrayList<>();
-                for (char c : answer.toCharArray()) {
-                    if (Character.isLetter(c)) {
-                        String up = String.valueOf(Character.toUpperCase(c));
-                        if (!keys.contains(up)) {
-                            bad.add(up);
-                        }
+                for (char c : leadingOptionLetters(answer)) {
+                    String up = String.valueOf(Character.toUpperCase(c));
+                    if (!keys.contains(up)) {
+                        bad.add(up);
                     }
                 }
                 if (!bad.isEmpty()) {
@@ -154,6 +161,44 @@ public class QuestionQualityCheck {
         }
         String t = text.replaceAll("\\s+", " ").trim();
         return t.length() > SUSPICIOUS_BRIEF_LENGTH ? t.substring(0, SUSPICIOUS_BRIEF_LENGTH) + "…" : t;
+    }
+
+    /**
+     * 取出答案开头的「选项字母」部分。
+     *
+     * <p>为什么只取开头：学习通导出的答案是 {@code D；标签和其属性构成了HTML元素;} 这种形式
+     * —— 字母后面跟着答案全文。全文里的英文字母（比如 "HTML"）<b>不是</b>选项字母，
+     * 一起扫进来会产生大量误报。所以遇到第一个非 ASCII 字母的字符就停。
+     *
+     * <pre>
+     *   "D；标签...HTML元素;"  →  [D]        （只取 D，后面的 H/T/M/L 是解释文字）
+     *   "A,C；甲和乙;"          →  [A, C]     （多选，逗号在中间，继续取）
+     *   "错"                    →  []         （中文答案没有字母，跳过校验）
+     *   "AB"                    →  [A, B]     （没有分隔符的连续字母）
+     * </pre>
+     *
+     * @return 开头的选项字母；一个都没有时返回空列表
+     */
+    private static List<Character> leadingOptionLetters(String answer) {
+        List<Character> letters = new ArrayList<>();
+        for (char c : answer.toCharArray()) {
+            if (isAsciiLetter(c)) {
+                letters.add(c);
+                continue;
+            }
+            // 逗号/顿号是选项字母之间的分隔符，可以继续往后取（多选题的 "A,C"）
+            if (c == ',' || c == '，' || c == '、' || c == '/' || c == ';' || c == '；') {
+                continue;
+            }
+            // 其余任何字符（中文、空格、括号……）都说明"答案字母部分已经结束"，停止
+            break;
+        }
+        return letters;
+    }
+
+    /** 是不是 ASCII 英文字母（A-Z / a-z） */
+    private static boolean isAsciiLetter(char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
     }
 
     /**

@@ -114,6 +114,61 @@ class QuestionQualityCheckTest {
 
             assertTrue(r.issues().isEmpty(), "小写答案应能匹配，实际报了：" + kinds(r));
         }
+
+        @Test
+        @DisplayName("答案是「字母；答案全文」形式 → 只校验开头的字母，全文里的英文不算")
+        void should_onlyCheckLeadingLetters_notTextInAnswer() {
+            // 学习通导出的真实形态：答案是「D；标签和其属性构成了HTML元素;」
+            // 「HTML」这四个字母曾经被当成答案字母，报出 [H,T,M,L] 四个假越界
+            RawQuestion q = new RawQuestion("单选题", "以下关于HTML标签叙述错误的是",
+                    List.of(new QuestionOption("A", "可以单独出现"), new QuestionOption("B", "必须正确嵌套"),
+                            new QuestionOption("C", "标签可以带有属性"), new QuestionOption("D", "标签和其属性构成HTML元素")),
+                    "D；标签和其属性构成了HTML元素;", "第一章", 1, new ArrayList<>());
+
+            QuestionQualityCheck.Report r = check.check(List.of(q));
+
+            assertTrue(r.issues().isEmpty(),
+                    "答案里的「HTML」不是选项字母，不该报越界。实际报了：" + kinds(r));
+        }
+
+        @Test
+        @DisplayName("中文答案（判断题的「对」/「错」）→ 不当作字母校验，不报越界")
+        void should_notTreatChineseAnswerAsLetters() {
+            // Character.isLetter('错') == true，用它判定会让每道判断题都误报一次
+            RawQuestion q = new RawQuestion("判断题", "HTML的标签一定是成对出现的",
+                    List.of(new QuestionOption("A", "对"), new QuestionOption("B", "错")),
+                    "错", "第一章", 1, new ArrayList<>());
+
+            QuestionQualityCheck.Report r = check.check(List.of(q));
+
+            assertTrue(r.issues().isEmpty(),
+                    "中文答案不该被当成越界字母。实际报了：" + kinds(r));
+        }
+
+        @Test
+        @DisplayName("多选答案是「A,C；甲和乙;」→ 逗号两侧的字母都要校验")
+        void should_checkBothLetters_inMultipleChoiceWithText() {
+            RawQuestion ok = new RawQuestion("多选题", "题干",
+                    List.of(new QuestionOption("A", "甲"), new QuestionOption("B", "乙"), new QuestionOption("C", "丙")),
+                    "A,C；甲和丙;", "第一章", 1, new ArrayList<>());
+            RawQuestion bad = new RawQuestion("多选题", "题干",
+                    List.of(new QuestionOption("A", "甲"), new QuestionOption("B", "乙")),
+                    "A,D；甲和丁;", "第一章", 1, new ArrayList<>());
+
+            assertTrue(check.check(List.of(ok)).issues().isEmpty(), "A 和 C 都在选项里，不该报");
+            assertTrue(kinds(check.check(List.of(bad))).contains("答案越界"),
+                    "D 不在选项里，应该报出来");
+        }
+
+        @Test
+        @DisplayName("真越界还是要能抓到（防止修复过头，把探针修失灵了）")
+        void should_stillCatchRealOutOfRange() {
+            // 只有 A/B/C 三个选项，答案是 D —— 这是真问题，必须报
+            QuestionQualityCheck.Report r = check.check(List.of(single("题干", "D；某个选项;", "A", "B", "C")));
+
+            assertTrue(kinds(r).contains("答案越界"),
+                    "真越界必须能抓到，否则这个检查就白做了。实际：" + kinds(r));
+        }
     }
 
     @Nested
