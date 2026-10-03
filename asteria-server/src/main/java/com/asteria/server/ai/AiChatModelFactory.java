@@ -43,16 +43,6 @@ public class AiChatModelFactory {
     }
 
     /**
-     * 同上，外加拿一个"服务商专有参数"的口子。
-     *
-     * @param extraBody 原样并进请求体的服务商专有字段（如 DeepSeek 的 thinking）；null / 空 = 不加。
-     *                  Spring AI 会把它 merge 进 ChatCompletionRequest，不影响标准字段。
-     */
-    public OpenAiChatModel create(AiRequestConfig config, Double temperature, Map<String, Object> extraBody) {
-        return create(config, temperature, extraBody, null);
-    }
-
-    /**
      * 完整版：温度 + 服务商专有参数 + 输出格式。
      *
      * @param responseFormat 约束模型的输出格式（如 {@code json_object}）；null = 不限制

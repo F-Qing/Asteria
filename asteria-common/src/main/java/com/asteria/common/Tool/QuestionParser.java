@@ -41,7 +41,7 @@ public class QuestionParser {
      *
      * <p>方括号 + 明确带「章」字，和题号行（带「题」字）在正则上完全不冲突。
      */
-    public static final Pattern CHAPTER_HEADER =
+    private static final Pattern CHAPTER_HEADER =
             Pattern.compile("^\\s*[【\\[]\\s*第\\s*[0-9一二三四五六七八九十百零]+\\s*章\\s*[】\\]]\\s*(.*)$");
 
     /**
@@ -378,18 +378,5 @@ public class QuestionParser {
             c = (char) (c - 'ａ' + 'a');
         }
         return String.valueOf(Character.toUpperCase(c));
-    }
-
-    //测试方法
-    public void debugHeader(List<String> lines) {
-        int count = 0;
-        for (int i = 0; i < lines.size(); i++) {
-            String line = lines.get(i);
-            if (QUESTION_HEADER.matcher(line).find()) {
-                count++;
-                System.out.println("第 " + (i + 1) + " 行是题号行: " + line.trim()/* 打印整行内容*/);
-            }
-        }
-        System.out.println("共 " + count + " 个题号行");
     }
 }
