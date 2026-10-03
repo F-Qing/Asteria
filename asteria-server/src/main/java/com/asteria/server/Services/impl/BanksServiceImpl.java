@@ -47,6 +47,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -55,6 +56,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 @Slf4j
@@ -78,6 +80,33 @@ public class BanksServiceImpl implements BanksService {
     private static final int MAX_REASON_LENGTH = 200;
     /** 分页查询单页上限，防止有人传 pageSize=100000 拉全表 */
     private static final int MAX_PAGE_SIZE = 200;
+
+    /**
+     * 「账号/服务商级失败」的识别词。
+     *
+     * <p>为什么用「关键词匹配消息」而不是解析上游错误码：AI 服务商五花八门（OpenAI 兼容网关、
+     * 各家云厂商），错误体格式各不相同，真正稳定的信号是消息文本本身。
+     * 宁可漏判（漏判只是多跑几道注定失败的题），不可乱判 —— 所以词表只收
+     * 「出现就说明整个账号不可用」的词，不收"超时""格式错"这类可能只是单题问题的词。
+     *
+     * <p>英文词一律小写：比较前会把消息转成小写。中文词不受影响。
+     * 401/402/429 是 HTTP 语义里最硬的一组信号：鉴权失效 / 欠费 / 限流。
+     */
+    private static final List<String> SYSTEMIC_AI_KEYWORDS = List.of(
+            // 英文：余额不足 / 配额 / 限流 / 请求过多 / 余额
+            "insufficient", "quota", "rate limit", "too many requests", "balance",
+            // 中文：国内网关（DeepSeek、通义等）常见的说法
+            "余额", "欠费", "限流", "频率",
+            // 状态码
+            "401", "402", "429");
+
+    /**
+     * 沿 {@code getCause()} 链最多看几层。
+     *
+     * <p>自引用（{@code t.getCause() == t}）当场就能发现，但 A→B→A 这种环只有靠层数上限才停得下来；
+     * 异常链本来也不会很深，10 层足够覆盖所有正常的包装（Spring AI 一般包 2~3 层）。
+     */
+    private static final int MAX_CAUSE_DEPTH = 10;
 
     /** 任务快照（taskId → 进度）。轮询接口优先读它，重启后回落到数据库 */
     private final ConcurrentHashMap<String, BankResultVO> importTasks = new ConcurrentHashMap<>();
@@ -279,12 +308,39 @@ public class BanksServiceImpl implements BanksService {
             BanksImportTransactional.Outcome outcome =
                     importTransactional.saveImport(taskId, bankName, originalName, ext, rawQuestions, aiParse);
 
-            // ③ 【新增】AI 解析阶段：事务外、后台线程里逐题跑，进度写内存给前端轮询
+            // ③ AI 解析阶段：事务外、后台线程里逐题跑，进度写内存给前端轮询。
+            //    aiEnrich 会把「失败几道题 / 有没有账号级问题」带回来 —— 决定任务终态要用它。
+            EnrichOutcome aiOutcome = null;
             if (aiParse) {
-                aiEnrich(taskId, outcome.bankId(), aiConfig);
+                aiOutcome = aiEnrich(taskId, outcome.bankId(), aiConfig);
             }
 
-            // ④ 内存状态：成功（内存不属于数据库事务，所以在事务外更新；AI 跑完才到这里）
+            // ④ 判断终态：账号级问题（余额不足/限流/Key 失效）→ 整批任务失败。
+            //    为什么退化成失败：这类问题下每道题都会失败，继续跑没有意义；
+            //    用户必须知道"是账号的问题"，否则只会以为系统坏了。
+            //    抛异常会被外层 catch 接住 → markFailed 把任务标 FAILED 并把原因写进 error_message。
+            //    注意：题库和题目在 saveImport 事务里【已经提交】，回滚不了也不会被回滚 ——
+            //    所以已完成解析的题数据不丢，用户照样能刷题（前端失败卡片会说明这一点）。
+            if (aiOutcome != null && aiOutcome.abortedBySystemIssue()) {
+                // ⚠️ 前端 BankImportView.vue 靠 "AI 解析中断：" 这个前缀区分"真回滚"和"题库已入库"，
+                //    改这句文案必须同步改那边的判断（changing either side breaks the other）
+                //
+                // ⚠️ 为什么「已完成 N 道」要写在原因【前面】：
+                //    这条消息最终会经过 briefReason() 截断到 MAX_REASON_LENGTH(200) 字。
+                //    而 systemicReason 是服务商原样回显的报文（可能上百字），
+                //    如果把它放前面，截断时会把「已完成 N 道 / 还差 M 道」这些**用户真正要的信息**吃掉。
+                //    把长文本放最后，它被截掉不影响用户知道"解析到哪了、下一步干什么"。
+                int completed = outcome.totalCount() - aiOutcome.failedCount();
+                throw new BusinessException(40021,
+                        "AI 解析中断：已完成 " + completed + " 道，还有 " + aiOutcome.failedCount()
+                                + " 道未解析（已完成的题目可以正常使用）。"
+                                + "请检查 AI 账号后重新上传以补齐。原因："
+                                + aiOutcome.systemicReason());
+            }
+
+            // ⑤ 内存状态：成功（内存不属于数据库事务，所以在事务外更新；AI 跑完才到这里）
+            //    失败几道题不算失败：那些题只是"没解析"，用户能用剩下的题，
+            //    前端会在成功卡片上补一行"其中 N 道题未生成解析"，所以这里照常标 SUCCESS。
             importTasks.compute(taskId, (k, v) -> {
                 if (v != null) {
                     v.setStatus(ImportStatus.SUCCESS.name());
@@ -295,7 +351,7 @@ public class BanksServiceImpl implements BanksService {
                 return v;
             });
 
-            // ⑤ 【修】数据库也要一起收尾：AI 路径下 saveImport 写的是 AI_PROCESSING，
+            // ⑥ 【修】数据库也要一起收尾：AI 路径下 saveImport 写的是 AI_PROCESSING，
             //    而内存里的最终状态不会自动落库 —— 不补这一笔，服务重启后 Message() 回落到
             //    数据库就会永远显示"AI 解析中"。（非 AI 路径 saveImport 里已经写过 SUCCESS）
             if (aiParse) {
@@ -350,6 +406,23 @@ public class BanksServiceImpl implements BanksService {
     // ========== AI 解析阶段 ==========
 
     /**
+     * AI 解析这一轮的结果。
+     *
+     * <p>为什么要把"失败几道题"和"为什么失败"传出去：只有调用方知道任务该怎么收尾 ——
+     * 单题失败不影响成功（用户能用剩下的题），账号级失败却必须让整批任务失败并说明原因。
+     *
+     * @param failedCount    本轮没解析成功的题数（含被账号问题带崩的那些）
+     * @param systemicReason 账号/服务商级失败的原因（已脱敏）；null = 没有这类问题
+     */
+    record EnrichOutcome(int failedCount, String systemicReason) {
+
+        /** 是不是被账号级问题打断的 —— 是的话任务终态是失败，而不是成功 */
+        boolean abortedBySystemIssue() {
+            return systemicReason != null;
+        }
+    }
+
+    /**
      * 给刚入库的题补解析（原本缺答案的顺带补答案）。
      *
      * <p><b>相比上一版改了三件事</b>：
@@ -368,10 +441,20 @@ public class BanksServiceImpl implements BanksService {
      * 并发度超过连接池大小（HikariCP 默认 10）时，超出的线程会排队等连接，
      * 并发就失去意义了。所以这里用 {@value #AI_CONCURRENCY} 留出余量。
      *
-     * <p>单题失败只记账不中断 —— 不能因为第 37 题超时就让前 36 题的解析白做。
+     * <p><b>单题失败只记账不中断</b> —— 不能因为第 37 题超时就让前 36 题的解析白做。
      * 失败的题会被标成 FAILED 并记下原因，下次续跑时自然会被重新捞出来。
+     *
+     * <p><b>但账号级失败（余额不足/限流/Key 失效）要往上报</b>：这类问题下后面每道题都会失败，
+     * 继续跑就是白等白花钱。本方法只负责把这件事记下来交给调用方（由 {@code processImport} 决定任务终态），
+     * 不在中途强杀已提交的任务 —— 剩余任务本来就排在信号量上，很快各自失败并记账，
+     * 真正的止损点是"下一轮不再无脑重跑"（见 {@link #unmarkRetryableFailures}）。
+     *
+     * <p>包级可见而不是 private：单元测试要直接拿返回值断言"失败几道题 / 有没有账号级问题"，
+     * 通过反射去拆 record 只会让测试更脆。
+     *
+     * @return 本轮失败题数 + 首次出现的账号级失败原因（没有则为 null）
      */
-    private void aiEnrich(String taskId, Long bankId, AiRequestConfig aiConfig) {
+    EnrichOutcome aiEnrich(String taskId, Long bankId, AiRequestConfig aiConfig) {
         // 只捞"还没解析成功"的题：PENDING（没碰过）+ FAILED（上次失败，重试）
         List<Question> questions = questionMapper.selectList(
                 Wrappers.<Question>lambdaQuery()
@@ -380,7 +463,7 @@ public class BanksServiceImpl implements BanksService {
         int total = questions.size();
         if (total == 0) {
             log.info("AI 解析：没有需要处理的题，跳过。taskId={}, bankId={}", taskId, bankId);
-            return;
+            return new EnrichOutcome(0, null);
         }
         log.info("AI 解析开始：taskId={}, bankId={}, 待处理{}题, 并发度{}", taskId, bankId, total, AI_CONCURRENCY);
 
@@ -389,7 +472,10 @@ public class BanksServiceImpl implements BanksService {
         // done 用原子类：多个线程会同时 +1
         AtomicInteger done = new AtomicInteger();
         AtomicInteger failed = new AtomicInteger();
-        // 进度写库要串行，否则多个线程同时 update 同一行会互相覆盖
+        // 账号级失败原因：并发的多个线程可能同时判定出来，用 compareAndSet 只留第一条 ——
+        // 它们是同一件事，留第一条既省事又能避免被后面某条截断得更含糊的消息覆盖
+        AtomicReference<String> systemicReason = new AtomicReference<>();
+        // 进度更新的串行点（见下面任务体里的说明）
         Object progressLock = new Object();
 
         // 虚拟线程执行器：适合"任务多、每个都在等 I/O"的场景。
@@ -415,22 +501,29 @@ public class BanksServiceImpl implements BanksService {
                     } catch (Exception e) {
                         failed.incrementAndGet();
                         markEnrichFailed(question, aiConfig, e);
+                        // 再算一次脱敏原因：markEnrichFailed 里那份只写进了题目行，
+                        // 账号级失败还要把它带到任务级（前端失败卡片直接显示的就是这句）
+                        String reason = AiErrors.mask(e, aiConfig);
+                        if (isSystemicAiFailure(e)) {
+                            systemicReason.compareAndSet(null, reason);
+                            log.error("AI 解析遇到账号级问题，本次提前结束：taskId={}, 原因={}", taskId, reason);
+                        }
                     } finally {
                         limiter.release();
                     }
 
                     int finished = done.incrementAndGet();
                     int progress = (int) (finished * 100L / total);
+                    // 进度现在【只】写内存快照。以前这里还每 5 题 update 一次 bank_import.progress：
+                    // 运行期间没人读库里的这个进度（前端轮询优先读内存），"跑到哪了"随时能从
+                    // question.ai_status 现算出来 —— 500 题因此少写 100 次数据库。
+                    //
+                    // progressLock 保留：updateTask 现在只剩一次 ConcurrentHashMap.compute
+                    // （对同一个 key 本身原子），严格说这层锁已可省；留着是为了让
+                    // "进度这类共享快照只有一个写入口"在代码里看得见，
+                    // 以后往里加逻辑（比如按批刷库）不会忘了串行化 —— 开销可以忽略。
                     synchronized (progressLock) {
                         updateTask(taskId, ImportStatus.AI_PROCESSING.name(), progress, total, bankId);
-                        // 每 5 题落一次数据库：内存进度是给前端轮询看的，
-                        // 落库是为了服务重启后 DB 里也有个大致进度
-                        if (finished % 5 == 0 || finished == total) {
-                            bankImportMapper.updateById(BankImport.builder()
-                                    .taskId(taskId)
-                                    .progress(progress)
-                                    .build());
-                        }
                     }
                 });
             }
@@ -439,9 +532,78 @@ public class BanksServiceImpl implements BanksService {
             log.error("AI 解析批处理异常：taskId={}", taskId, e);
         }
 
+        // 被账号问题打断：这些题失败的原因是账号，不是题目本身（见方法上的说明）
+        if (systemicReason.get() != null) {
+            unmarkRetryableFailures(questions);
+        }
+
         int okCount = total - failed.get();
         log.info("AI 解析结束：taskId={}, 成功{}题, 失败{}题（失败的题已标 FAILED，下次可续跑）",
                 taskId, okCount, failed.get());
+        return new EnrichOutcome(failed.get(), systemicReason.get());
+    }
+
+    /**
+     * 这个异常是不是账号/服务商级别的问题（不是我某道题的问题）。
+     * 命中这些时下一道题也一定会失败，应该立刻停手。
+     *
+     * <p>沿 cause 链逐层看消息：Spring AI 会把上游报错包一两层，
+     * 真正写着 "insufficient balance" 的那句往往在最里层 —— 只看最外层的 message 会漏判。
+     *
+     * <p>包级可见而不是 private：单元测试要直接断言这些关键词的判定结果。
+     */
+    boolean isSystemicAiFailure(Throwable e) {
+        Throwable t = e;
+        for (int depth = 0; t != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            String msg = t.getMessage();
+            if (msg != null && !msg.isBlank()) {
+                String lower = msg.toLowerCase(Locale.ROOT);
+                for (String keyword : SYSTEMIC_AI_KEYWORDS) {
+                    if (lower.contains(keyword)) {
+                        return true;
+                    }
+                }
+            }
+            Throwable cause = t.getCause();
+            // 自引用（有些包装异常会把自己设成自己的 cause）会让循环停不下来
+            if (cause == t) {
+                break;
+            }
+            t = cause;
+        }
+        return false;
+    }
+
+    /**
+     * 把因账号问题而失败的题改回「未解析」。
+     *
+     * <p>为什么必须改回去：它们是<b>可重试</b>的，不是坏题。留着 FAILED 有两层害处 ——
+     * 用户在题库详情里看到"解析失败"会以为题目本身有问题，
+     * 而后续看到 ai_status 的人也读不出"其实只是账号欠费"这个真实原因。
+     *
+     * <p>只动"当前还是 FAILED"的题：条件里带 {@code ai_status = FAILED} 是防并发踩踏 ——
+     * 万一这期间某道题被别的路径改写成了 DONE，不能被我们倒退回 PENDING。
+     *
+     * <p>整段吞异常：这是善后动作，它失败不该把"任务为什么失败"这条主流程信息也弄丢。
+     */
+    void unmarkRetryableFailures(List<Question> questions) {
+        List<Long> ids = questions.stream()
+                .map(Question::getId)
+                .filter(id -> id != null)
+                .toList();
+        if (ids.isEmpty()) {
+            return;
+        }
+        try {
+            questionMapper.update(null, Wrappers.<Question>lambdaUpdate()
+                    .in(Question::getId, ids)
+                    .eq(Question::getAiStatus, AiStatus.FAILED.name())
+                    .set(Question::getAiStatus, AiStatus.PENDING.name())
+                    .set(Question::getAiError, null));
+            log.info("账号级 AI 失败：{} 道题已从 FAILED 改回 PENDING（可重试，不是坏题）", ids.size());
+        } catch (Exception e) {
+            log.warn("把账号级失败的题改回 PENDING 时出错（只是善后，不影响主流程）：题数={}", ids.size(), e);
+        }
     }
 
     /**
@@ -513,13 +675,17 @@ public class BanksServiceImpl implements BanksService {
         // 1) 先查内存（有实时进度，最新）
         BankResultVO task = importTasks.get(taskId);
         if (task != null) {
+            // 内存快照里没有题级计数（它是可变的任务态，不是题的真相源），现算再返回。
+            // 每次都算：前端 1.5s 轮询一次，而这三次 COUNT 走 bank_id 索引，比缓存一份计数
+            // 再想办法让它和 question.ai_status 保持一致便宜得多。
+            fillAiCounts(task, task.getBankId());
             return task;
         }
 
         // 2) 内存没有 → 查数据库（例如服务重启过）
         BankImport bankImport = bankImportMapper.selectById(taskId);
         if (bankImport != null) {
-            return BankResultVO.builder()
+            BankResultVO vo = BankResultVO.builder()
                     .taskId(bankImport.getTaskId())
                     .status(bankImport.getStatus())
                     .fileName(bankImport.getFileName())
@@ -529,6 +695,8 @@ public class BanksServiceImpl implements BanksService {
                     .bankId(bankImport.getBankId())
                     .errorMessage(bankImport.getErrorMessage())
                     .build();
+            fillAiCounts(vo, vo.getBankId());
+            return vo;
         }
 
         // 3) 都没有 → 任务不存在
@@ -538,6 +706,40 @@ public class BanksServiceImpl implements BanksService {
                 .progress(0)
                 .errorMessage("任务不存在")
                 .build();
+    }
+
+    /**
+     * 把「AI 解析完成了多少 / 还差多少 / 失败多少」填进任务 VO（实时从 question 表现算）。
+     *
+     * <p>为什么不落库：{@code question.ai_status} 是每题成败的唯一真相源，任务行上再存一份计数
+     * 就有了第二个真相源，写时机稍微对不上（比如失败后重试成功）界面就会说错话，而且没法自查。
+     *
+     * <p>为什么整段吞异常：这只是给界面补信息的附属查询，查不出来最多是前端不显示那行提示，
+     * 绝不能让"查任务进度"这个主接口跟着挂掉。
+     */
+    private void fillAiCounts(BankResultVO vo, Long bankId) {
+        if (bankId == null) {
+            // 还没入库/已失败的任务没有题可统计，保持三个字段为 null（前端据此不显示提示）
+            return;
+        }
+        try {
+            Long done = questionMapper.selectCount(Wrappers.<Question>lambdaQuery()
+                    .eq(Question::getBankId, bankId)
+                    .eq(Question::getAiStatus, AiStatus.DONE.name()));
+            Long failed = questionMapper.selectCount(Wrappers.<Question>lambdaQuery()
+                    .eq(Question::getBankId, bankId)
+                    .eq(Question::getAiStatus, AiStatus.FAILED.name()));
+            Long all = questionMapper.selectCount(Wrappers.<Question>lambdaQuery()
+                    .eq(Question::getBankId, bankId));
+
+            vo.setAiDoneCount(done.intValue());
+            vo.setAiFailedCount(failed.intValue());
+            // 待解析 = 不是 DONE 也不是 FAILED 的（主要是 PENDING）；
+            // 用减法而不是再按 PENDING 查一次，是为了让三个数加起来必定等于总题数
+            vo.setAiPendingCount(Math.max(0, all.intValue() - done.intValue() - failed.intValue()));
+        } catch (Exception e) {
+            log.warn("统计 AI 解析计数失败（不影响任务状态返回）：bankId={}", bankId, e);
+        }
     }
 
     // ========== 题库分页查询 ==========

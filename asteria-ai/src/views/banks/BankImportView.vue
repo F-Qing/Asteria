@@ -72,6 +72,10 @@
         <div class="result-figure success"><Check :size="30" :stroke-width="2" /></div>
         <h3>导入完成</h3>
         <p class="text-muted">共识别 {{ task.totalCount }} 道题目，已整理入库</p>
+        <!-- 只有真有失败题才多这一行：没失败时加提示纯属噪音 -->
+        <p v-if="task.aiFailedCount" class="ai-warn">
+          其中 {{ task.aiFailedCount }} 道题未生成解析，不影响做题
+        </p>
         <div class="result-actions">
           <SoftButton variant="outline" @click="reset">继续导入</SoftButton>
           <SoftButton :icon="ArrowRight" @click="router.push(`/banks/${task.bankId}`)">查看题库</SoftButton>
@@ -82,7 +86,12 @@
         <div class="result-figure failed"><TriangleAlert :size="30" :stroke-width="1.6" /></div>
         <h3>导入失败</h3>
         <p class="error-msg">{{ task.errorMessage || '文件解析失败，请检查文件内容' }}</p>
-        <p class="text-muted">数据已回滚，不会产生脏数据</p>
+        <!-- 两类 FAILED 的数据命运完全相反，不能共用一句话：
+             真失败（切不出题/入库失败）整个事务回滚了，题库没建成；
+             而 40021「AI 解析中断」是账号级问题，题库和题目在事务里【已经提交】，数据是留着的。
+             用一句"数据已回滚"盖住两种，会让账号欠费的用户以为题库没了。 -->
+        <p v-if="isAiInterrupted" class="text-muted">题目已入库，可正常使用</p>
+        <p v-else class="text-muted">数据已回滚，不会产生脏数据</p>
         <div class="result-actions">
           <SoftButton variant="outline" :icon="RotateCcw" @click="reset">重新上传</SoftButton>
           <SoftButton variant="ghost" @click="formatGuideVisible = true">查看格式要求</SoftButton>
@@ -221,6 +230,16 @@ function stopPoll() {
     pollTimer = null
   }
 }
+
+/**
+ * 任务是不是被账号级问题（余额不足/限流/Key 失效）打断的。
+ *
+ * ⚠️ 这里靠前缀认后端 40021 的文案，和后端 BanksServiceImpl 里
+ * `"AI 解析中断：" + reason` 那句是硬耦合 —— 改文案必须两边一起改。
+ * 之所以认文案而不是错误码：轮询接口返回的是任务快照，没有单独的 code 字段。
+ * 认出来是为了区分两类 FAILED：真失败=题库回滚了，AI 中断=题目已经入库。
+ */
+const isAiInterrupted = computed(() => task.value?.errorMessage?.startsWith('AI 解析中断：') ?? false)
 
 /* ── 阶段文案：解析文档→识别题目→AI 解析入库 ── */
 const stageText = computed(() => {
@@ -367,6 +386,12 @@ function reset() {
 .error-msg {
   color: var(--error);
   margin: var(--space-2) 0;
+}
+/* 「有题没生成解析」用暖色警示：题目本身可用，所以不是 error（红），
+   只是让用户注意到"这批没解析全"。颜色走 token，暗色模式下自动跟着变 */
+.ai-warn {
+  margin: var(--space-2) 0;
+  color: var(--warning);
 }
 .result-actions {
   display: flex;

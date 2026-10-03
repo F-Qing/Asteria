@@ -23,6 +23,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -48,13 +49,35 @@ class BanksServiceImplTest {
     @InjectMocks
     private BanksServiceImpl banksService;
 
-    @TempDir
-    Path tempDir;
+    /**
+     * 上传目录：用一次性临时目录，但**刻意不用 {@code @TempDir}**。
+     *
+     * <p>为什么：被测的 {@code importBanks} 会起一个后台线程去读刚落盘的文件。
+     * JUnit 的 {@code @TempDir} 在测试方法结束后立刻递归删目录，而此时后台线程可能还攥着那个文件句柄 ——
+     * 在 Windows 上会删不掉，JUnit 于是把这个"清理失败"报成测试 ERROR。
+     *
+     * <p>症状很迷惑人：**断言全过、却偶发报错**，错误信息是
+     * {@code Failed to delete temp directory ... The following paths could not be deleted: xxx.txt}。
+     * 而且它跟被测代码无关，只是文件时序问题。
+     *
+     * <p>所以这里改成"整个测试类共用一个临时目录、不做删除"：
+     * 影响的只是系统临时目录里几个几十字节的小文件，换来的是测试结果的确定性 ——
+     * 一个偶发红的测试套件没法当回归门禁用。
+     */
+    private static final Path UPLOAD_DIR = createUploadDir();
+
+    private static Path createUploadDir() {
+        try {
+            return Files.createTempDirectory("asteria-upload-test-");
+        } catch (IOException e) {
+            throw new IllegalStateException("建临时上传目录失败", e);
+        }
+    }
 
     @BeforeEach
     void setUp() {
         // @Value 注入的配置字段在纯 Mockito 环境里不存在，手动指到临时目录
-        ReflectionTestUtils.setField(banksService, "uploadDir", tempDir.toString());
+        ReflectionTestUtils.setField(banksService, "uploadDir", UPLOAD_DIR.toString());
     }
 
     /** 造一个"内存文件"：不落盘、不用真实磁盘，isEmpty/getSize 都按内容来 */

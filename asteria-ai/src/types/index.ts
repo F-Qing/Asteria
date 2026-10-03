@@ -45,6 +45,12 @@ export interface ImportTask {
   bankId: number | null
   totalCount: number
   errorMessage: string | null
+  /** AI 解析已完成的题数（后端实时统计，未入库的任务为 null） */
+  aiDoneCount?: number | null
+  /** 还没解析的题数（不含失败的那些） */
+  aiPendingCount?: number | null
+  /** 解析失败的题数（成功卡片靠它决定要不要提示"有题没生成解析"） */
+  aiFailedCount?: number | null
 }
 
 export interface Bank {
