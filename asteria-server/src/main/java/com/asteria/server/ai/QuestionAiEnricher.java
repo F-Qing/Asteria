@@ -56,7 +56,10 @@ public class QuestionAiEnricher {
                 1. 用中文，3~5 句话，说清"为什么"以及涉及的知识点，不要复述题干。
                 2. 题目给出了标准答案时，一律以它为准，不要质疑或改写。
                 3. 标准答案为空时，你要自己解出正确答案，并在解析里说明依据。
-                4. 只输出 JSON，不要任何额外文字，不要 markdown 代码块。
+                4. 解析里要写公式（LaTeX，如 \\frac、\\alpha、\\times）时，**反斜杠必须写成两个**：
+                   写 "\\\\frac{1}{2}" 而不是 "\\frac{1}{2}"。少写一个反斜杠会让公式丢失，
+                   甚至让整段 JSON 解析失败。
+                5. 只输出 JSON，不要任何额外文字，不要 markdown 代码块。
                 """;
 
         // getFormat() 生成的"格式说明书"必须自己拼进提示词，否则模型不受约束
@@ -66,8 +69,10 @@ public class QuestionAiEnricher {
                 new SystemMessage(system),
                 new UserMessage(user))));
 
-        // 文本 → 对象；解析不了会抛异常，由调用方记账
-        AiAnswer ai = converter.convert(response.getResult().getOutput().getText());
+        // 文本 → 对象；解析不了会抛异常，由调用方记账。
+        // 先做反斜杠修复：解析里经常要写公式（\frac 之类），裸反斜杠会让 JSON 解析失败或静默损坏
+        AiAnswer ai = converter.convert(AiJsonRepair.repairBackslashes(
+                response.getResult().getOutput().getText()));
         if (ai == null || ai.analysis() == null || ai.analysis().isBlank()) {
             throw new IllegalStateException("AI 没有返回可用的解析内容");
         }

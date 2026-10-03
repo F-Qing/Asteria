@@ -78,7 +78,10 @@ public class AiQuestionExtractor {
             6. 没有选项的题（判断/填空/简答，或原文本来就没列选项），options 写 []。
                判断题如果原文给了「正确/错误」这类选项才写，否则写 []。
             7. **不要输出题号、不要重新编号**，题目按原文先后顺序排列即可。
-            8. 只输出 JSON 本身：不要解释文字，不要 markdown 代码块。
+            8. 原文里有公式（LaTeX，如 \\frac、\\alpha、\\times）时，**反斜杠必须写成两个**：
+               写 "\\\\frac{1}{2}" 而不是 "\\frac{1}{2}"。这是 JSON 的转义要求，
+               少写一个反斜杠会让公式丢失、甚至让整段 JSON 解析失败。
+            9. 只输出 JSON 本身：不要解释文字，不要 markdown 代码块。
 
             【输出格式】
             {"questions":[{"chapter":"","type":"单选题","stem":"题干原文","options":[{"key":"A","content":"选项原文"}],"answer":"A"}]}
@@ -205,7 +208,7 @@ public class AiQuestionExtractor {
      * 只要根是数组、或根对象里有且仅有一个数组字段，就取它。返回里混着多余文字也容忍。
      */
     private List<AiQuestion> parseQuestions(String text) throws Exception {
-        String json = stripToJson(text);
+        String json = stripToJsonAndRepair(text);
         JsonNode root = objectMapper.readTree(json);
 
         JsonNode array = null;
@@ -249,6 +252,18 @@ public class AiQuestionExtractor {
             }
         }
         return start > 0 ? t.substring(start).trim() : t;
+    }
+
+    /**
+     * {@link #stripToJson} 之后再补一步反斜杠修复。
+     *
+     * <p>数学题的题干里会有 {@code \frac} 这类 LaTeX，而 JSON 把反斜杠当转义符：
+     * {@code \f} 是合法转义（换页符）→ 静默解析成"换页符 + rac"，题干被悄悄改坏；
+     * {@code \alpha} 不是合法转义 → 直接抛异常，整块抽取失败。
+     * 修复细节见 {@link AiJsonRepair}。
+     */
+    private String stripToJsonAndRepair(String text) {
+        return AiJsonRepair.repairBackslashes(stripToJson(text));
     }
 
     // ========== 逐题校验 ==========

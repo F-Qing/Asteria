@@ -11,6 +11,8 @@ import com.asteria.pojo.entity.WrongQuestion;
 import com.asteria.pojo.enums.QuestionType;
 import com.asteria.server.Services.AiService;
 import com.asteria.server.ai.AiChatModelFactory;
+import com.asteria.server.ai.AiErrors;
+import com.asteria.server.ai.AiJsonRepair;
 import com.asteria.server.ai.AiRequestConfig;
 import com.asteria.server.ai.AiTestResult;
 import com.asteria.server.mapper.BankMapper;
@@ -124,7 +126,7 @@ public class AiServiceImpl implements AiService {
 
         } catch (Exception e) {
             // ⑤ 失败统一走这里，只回显脱敏后的一行字
-            String reason = mask(e, config);
+            String reason = AiErrors.mask(e, config);
             log.warn("AI 连通性测试失败：{} - {}", e.getClass().getSimpleName(), reason);
             return new AiTestResult(false, "调用失败：" + reason);
         }
@@ -211,11 +213,13 @@ public class AiServiceImpl implements AiService {
             ChatResponse response = chatModel.call(new Prompt(List.of(
                     new SystemMessage(system),
                     new UserMessage(user))));
-            // 文本 → 对象；模型没按 JSON 回时这里会抛
-            result = converter.convert(response.getResult().getOutput().getText());
+            // 文本 → 对象；模型没按 JSON 回时这里会抛。
+            // 先做反斜杠修复：总结里可能出现公式（\frac 之类），裸反斜杠会让 JSON 解析失败
+            result = converter.convert(AiJsonRepair.repairBackslashes(
+                    response.getResult().getOutput().getText()));
         } catch (Exception e) {
             // key 无效 / 限流 / 超时 / 模型没按格式回 —— 统一翻译成一句人话
-            throw new BusinessException(50000, "AI 生成总结失败：" + mask(e, aiConfig));
+            throw new BusinessException(50000, "AI 生成总结失败：" + AiErrors.mask(e, aiConfig));
         }
         if (result == null) {
             throw new BusinessException(50000, "AI 没有返回可用的总结内容");
@@ -300,7 +304,8 @@ public class AiServiceImpl implements AiService {
             ChatResponse response = chatModel.call(new Prompt(List.of(
                     new SystemMessage(system),
                     new UserMessage(user))));
-            AiMistakeResult mistakeResult = converter.convert(response.getResult().getOutput().getText());
+            AiMistakeResult mistakeResult = converter.convert(AiJsonRepair.repairBackslashes(
+                    response.getResult().getOutput().getText()));
             List<String> easyMistakes = mistakeResult == null
                     ? List.of()
                     : emptyIfNull(mistakeResult.easyMistakes());
@@ -309,7 +314,7 @@ public class AiServiceImpl implements AiService {
             return easyMistakes;
         } catch (Exception e) {
             // ★ 易错点是"锦上添花"：它失败不该让已经调成功的主总结一起作废
-            log.warn("易错点生成失败，按空数组处理：bankId={}, 原因={}", bankId, mask(e, aiConfig));
+            log.warn("易错点生成失败，按空数组处理：bankId={}, 原因={}", bankId, AiErrors.mask(e, aiConfig));
             return List.of();
         }
     }
@@ -449,13 +454,5 @@ public class AiServiceImpl implements AiService {
     /** AI 可能漏给某个数组，兜成空数组，免得前端拿到 null 崩掉 */
     private List<String> emptyIfNull(List<String> list) {
         return list == null ? List.of() : list;
-    }
-
-    /**
-     * 异常信息脱敏：压成一行、截断 200 字、把 key 替换成 ***。
-     * 实现已抽到 {@link com.asteria.server.ai.AiErrors}（导入格式化那边也要用同一份）。
-     */
-    private String mask(Exception e, AiRequestConfig config) {
-        return com.asteria.server.ai.AiErrors.mask(e, config);
     }
 }

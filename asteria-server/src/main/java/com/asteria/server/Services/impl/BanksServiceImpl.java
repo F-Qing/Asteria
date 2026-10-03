@@ -24,6 +24,7 @@ import com.asteria.server.mapper.BanksImportMapper;
 import com.asteria.server.mapper.ChapterMapper;
 import com.asteria.server.mapper.QuestionMapper;
 import com.asteria.server.mapper.WrongQuestionMapper;
+import com.asteria.server.parser.QuestionQualityCheck;
 import com.asteria.server.tool.DocxTextReader;
 import com.asteria.server.tool.PdfTextReader;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -88,6 +89,10 @@ public class BanksServiceImpl implements BanksService {
     /** 单题 AI 解析器（内部自己造 ChatModel，这里不用管 key/baseUrl） */
     @Autowired
     private QuestionAiEnricher questionAiEnricher;
+
+    /** 解析结果的输出侧自检：只打标不改数据，用来发现"切题切错了"这类静默问题 */
+    @Autowired
+    private QuestionQualityCheck questionQualityCheck;
 
     /** 解析不出题目时的兜底：让 AI 按 JSON schema 把原文抽成结构化题目（内部按题目边界分块 + 逐题校验） */
     @Autowired
@@ -184,12 +189,18 @@ public class BanksServiceImpl implements BanksService {
             // ① 解析：读文件 + 切块 + 提取（纯计算，不碰数据库，所以放在事务外面）
             // 按文件类型选"取文本"的方式：docx 用 POI、pdf 用 PDFBox、txt 直接按编码读
             // 三种方式抽出的都是"纯文本"，后面切块/判型/归一化的逻辑完全共用
-            String content = switch (ext) {
-                case "docx" -> docxTextReader.read(destFile);
-                case "pdf" -> pdfTextReader.read(destFile);
-                default -> fileTextReader.read(destFile);
-            };
-
+            // PDF 额外留一份体检结果：扫描件会给出一句准确的提示，而不是笼统的"识别不出"
+            String content;
+            String pdfHint = null;
+            if ("pdf".equals(ext)) {
+                PdfTextReader.Result pdf = pdfTextReader.readWithDiagnostics(destFile);
+                content = pdf.text();
+                pdfHint = pdf.scannedHint();
+            } else if ("docx".equals(ext)) {
+                content = docxTextReader.read(destFile);
+            } else {
+                content = fileTextReader.read(destFile);
+            }
 
             List<RawQuestion> rawQuestions = new QuestionParser().parse(content);
             log.info("文件解析完成：taskId={}, 共{}条原始题", taskId, rawQuestions.size());
@@ -204,6 +215,11 @@ public class BanksServiceImpl implements BanksService {
             // ①.5 【兜底】规则解析不出可用题目 → 交给 AI 做【结构化抽取】（不是"改写成标准文本再正则解析"）
             //      这是"救乱格式的文件"，不是默认路径：格式正常的文件永远不会走到这里
             if (!looksUsable(rawQuestions)) {
+                // 扫描件没有文字层，AI 也救不了（它拿到的同样是空文本），
+                // 直接给准确提示，别白跑一次模型调用
+                if (pdfHint != null) {
+                    throw new BusinessException(40020, pdfHint);
+                }
                 if (aiConfig == null) {
                     throw new BusinessException(40020,
                             "文件格式无法自动识别；请先在「设置」页配置 AI 服务后重试，或按「题目格式要求」整理后再上传");
@@ -235,6 +251,12 @@ public class BanksServiceImpl implements BanksService {
             // ② 入库：题库 + 章节 + 题目 + 任务状态，同一个事务（跨 Bean 调用，事务才生效）
             //    多传一个 aiParse：为 true 时任务状态会停在 AI_PROCESSING 而不是 SUCCESS
             boolean aiParse = aiConfig != null;
+
+            // ②.5 输出侧自检：只打日志、不改数据。
+            //      「答案越界」这类信号能证明切题切错了 —— 是发现解析问题的免费探针。
+            //      放在入库前，这样日志里的问题能和紧接着的入库统计对上。
+            questionQualityCheck.check(rawQuestions);
+
             BanksImportTransactional.Outcome outcome =
                     importTransactional.saveImport(taskId, bankName, originalName, ext, rawQuestions, aiParse);
 

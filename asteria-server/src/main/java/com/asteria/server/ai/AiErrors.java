@@ -26,6 +26,8 @@ public final class AiErrors {
         if (msg.length() > 200) {
             msg = msg.substring(0, 200) + "…";
         }
-        return config.apiKey() == null ? msg : msg.replace(config.apiKey(), "***");
+        // config 可能为 null（不涉及 AI 配置的调用点）：这时没什么可脱敏的，直接返回
+        String apiKey = config == null ? null : config.apiKey();
+        return apiKey == null ? msg : msg.replace(apiKey, "***");
     }
 }
