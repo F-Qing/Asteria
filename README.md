@@ -1,9 +1,22 @@
 # Asteria · 智能刷题系统（后端）
 
-基于 **Spring Boot 3.5 + Spring AI** 的智能刷题系统后端。
+![Java](https://img.shields.io/badge/Java-21-orange)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.16-6DB33F)
+![Spring AI](https://img.shields.io/badge/Spring%20AI-1.1.8-6DB33F)
+![MyBatis-Plus](https://img.shields.io/badge/MyBatis--Plus-3.5.15-red)
+![MySQL](https://img.shields.io/badge/MySQL-8-4479A1)
+![License](https://img.shields.io/badge/License-未指定-lightgrey)
 
-把 Word / PDF / TXT 题库文档导进来，自动切题、分章节、判定题型，可选地用 AI 补全解析与知识点；
-在此之上提供刷题、错题本、知识点总结，以及一个**能自己去查题库**的 AI 答疑助手（工具调用）。
+基于 **Spring Boot 3.5 + Spring AI** 的智能刷题系统服务端。把 Word / PDF / TXT 题库文档导进来，
+自动切题、分章节、判定题型，可选地用 AI 补全解析与知识点；在此之上提供刷题、错题本、知识点总结，
+以及一个**能自己去查题库**的 AI 答疑助手（Tool Calling）。
+
+**设计取向**
+
+- **规则优先、AI 兜底** —— 纯文本规则解析零成本；只有规则一道题都切不出来时，才走 AI 结构化抽取，把 token 花在真正需要的地方。
+- **BYOK（Bring Your Own Key）** —— 后端不保存任何 API Key，Key 随请求头传入、用完即弃，天然支持多用户各自接自己的模型。
+- **单 jar 交付** —— 前端构建产物打进 jar 的 `static/`，`java -jar` 一步起来，不必额外挂 nginx。
+- **多模块单向分层** —— 父工程聚合 `common / pojo / server`，依赖只朝一个方向走，边界清晰。
 
 > 前端（Vue 3 + Vite）源码与打包产物在 [`asteria-ai/`](./asteria-ai)，其中 `asteria-ai/dist` 是可直接部署的构建结果。
 >
@@ -14,15 +27,218 @@
 
 ## 目录
 
+- [系统架构](#系统架构)
+  - [分层架构](#分层架构)
+  - [模块依赖](#模块依赖)
+  - [后端包分布](#后端包分布)
+  - [关键流程](#关键流程)
 - [技术栈](#技术栈)
 - [功能](#功能)
-- [模块结构](#模块结构)
 - [快速开始](#快速开始)
 - [配置说明](#配置说明)
 - [接口一览](#接口一览)
 - [数据库](#数据库)
 - [AI 能力与设计要点](#ai-能力与设计要点)
 - [已知限制](#已知限制)
+
+---
+
+## 系统架构
+
+### 分层架构
+
+自上而下五层，依赖只向下。前端与后端之间只通过 `/api/**` 通信（含 SSE 流）。
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                          浏览器 / 客户端                                 │
+│   Vue 3 + Vite + Element Plus + Pinia        （asteria-ai，产物进 jar）  │
+└───────────────────────────────┬────────────────────────────────────────┘
+                                │   HTTP / SSE  ·  /api/**
+┌───────────────────────────────▼────────────────────────────────────────┐
+│ ① 接口层        controller/                                             │
+│    Banks · Questions · Practice · AiChat · AiSummary · Ai · TextDate    │
+├────────────────────────────────────────────────────────────────────────┤
+│ ② 应用服务层    Services/ (接口) + Services/impl/ (实现)                 │
+│    导入编排 · 刷题会话 · 题库查询 · 聊天会话 · 知识点总结 · 考试信息        │
+├────────────────────────────────────────────────────────────────────────┤
+│ ③ 领域 / 智能层                                                          │
+│    parser/   题型判定 · 答案归一化 · 输出质量自检                          │
+│    ai/       模型工厂 · JSON 结构化抽取 · 工具调用 · 提示词 · 脱敏 · 增强    │
+├────────────────────────────────────────────────────────────────────────┤
+│ ④ 基础设施层    mapper/ · tool/ · config/ · handler/                     │
+│    MyBatis-Plus 数据访问 · POI/PDFBox 文本抽取 · 装配 · 全局异常           │
+└───────────────┬────────────────────────────────────┬───────────────────┘
+                │ JDBC                               │ HTTPS（OpenAI 兼容协议）
+        ┌───────▼────────┐                  ┌────────▼─────────┐
+        │    MySQL 8     │                  │  LLM 服务商（外部）│
+        │ 题库·刷题·聊天  │                  │ DeepSeek / OpenAI │
+        │                │                  │ 通义 / 智谱 / …    │
+        └────────────────┘                  └──────────────────┘
+```
+
+### 模块依赖
+
+父工程 `asteria` 只做**版本管理与模块聚合**，不含业务代码。三个子模块依赖单向：
+`asteria-server → asteria-common / asteria-pojo`；`common` 与 `pojo` **互不相识**。
+
+```
+                        ┌──────────────────────────────────────┐
+                        │            asteria（父 POM）          │
+                        │   packaging=pom · 版本管理 · 模块聚合   │
+                        └──────────────────┬───────────────────┘
+           ┌───────────────────────────────┼───────────────────────────────┐
+           ▼                               ▼                               ▼
+┌──────────────────────┐      ┌──────────────────────┐      ┌──────────────────────────┐
+│   asteria-common     │      │    asteria-pojo      │      │     asteria-server       │
+│   纯工具 · 无 Spring  │      │   数据模型 · 无业务    │      │  可执行服务端（Spring Boot）│
+│                      │      │                      │      │                          │
+│  Tool/  解析与文本抽取 │      │  entity/ 实体 + DTO   │      │  controller/  service/   │
+│  result/ 统一响应体   │      │  entity/VO 视图对象    │      │  ai/  parser/  mapper/   │
+│  exception/ 业务异常  │      │  enums/ 枚举          │      │  tool/ config/ handler/  │
+└──────────────────────┘      └──────────────────────┘      └────────────┬─────────────┘
+           ▲                               ▲                             │
+           └───────────────────────────────┴─────────────────────────────┘
+                     依赖方向：asteria-server ──▶ common / pojo（单向）
+
+  注：解析用的 QuestionOption（common）与展示用的 QuestionOptionVO（pojo）各留一份，
+      正是「common 与 pojo 解耦」的代价与结果。
+```
+
+### 后端包分布
+
+`asteria-server` 的完整包结构（重点）。四类职责用 ①②③④ 对应上面的分层编号。
+
+```
+asteria-server/src/main/java/com/asteria/server/
+│
+├── AsteriaServerApplication.java     启动类（scanBasePackages = server + common）
+│
+├── controller/                        ①  接口层：只负责收参、组响应，不写业务
+│   ├── BanksController                 题库：导入 / 导入进度 / 详情 / 删除 / 题目列表
+│   ├── QuestionsController             题目
+│   ├── PracticeController              刷题：会话建立 / 作答 / 结果 / 统计 / 错题
+│   ├── AiChatController                聊天：会话 CRUD + SSE 流式消息
+│   ├── AiSummaryController             知识点总结（含缓存读取）
+│   ├── AiController                    AI 连通性自测
+│   └── TextDateController              考试信息 CRUD
+│
+├── Services/                          ②  应用服务层：业务编排
+│   ├── BanksService        + impl/     导入登记、后台异步编排、查询、级联删除
+│   ├── BanksImportTransactional        导入落库的事务边界（独立 Bean，保证 @Transactional 生效）
+│   ├── QuestionsService    + impl/
+│   ├── PracticeService     + impl/
+│   ├── ChatService         + impl/     会话与消息、SSE 事件组装
+│   ├── AiService           + impl/
+│   └── TextDateService     + impl/
+│
+├── parser/                            ③  领域层：解析结果的判定与归一化
+│   ├── QuestionClassifier              选项数 / 答案 → 题型（单选·多选·判断·简答·填空）
+│   ├── AnswerNormalizer                答案字母归一化
+│   ├── AnswerTexts                     答案文本工具
+│   └── QuestionQualityCheck            输出侧自检：只打日志、不改数据（发现切题错误的探针）
+│
+├── ai/                                ③  智能层：所有与模型交互的代码集中在此
+│   ├── AiChatModelFactory              按请求现场构造模型（BYOK）；导入场景自动关思考模式
+│   ├── AiRequestConfig                 四个 X-AI-* 请求头的解析结果
+│   ├── AiQuestionExtractor             规则解析失败时的 JSON 结构化抽取兜底
+│   ├── QuestionAiEnricher              逐题补全解析 / 知识点
+│   ├── QuestionBankTools               暴露给模型的 3 个查库工具
+│   ├── AiJsonRepair                    模型 JSON 输出的容错修复
+│   ├── AiHeaders                       X-AI-* 请求头常量
+│   ├── AiErrors                        上游异常脱敏（压行 / 截断 / Key 替换为 ***）
+│   └── AiTestResult                    /ai/test 返回体
+│
+├── mapper/                            ④  基础设施：MyBatis-Plus 数据访问
+│   ├── BankMapper · ChapterMapper · QuestionMapper
+│   ├── BanksImportMapper               导入任务
+│   ├── PracticeSessionMapper · PracticeSessionQuestionMapper · PracticeRecordMapper
+│   ├── WrongQuestionMapper             错题本
+│   ├── KnowledgeSummaryMapper          知识点总结缓存
+│   ├── ChatSessionMapper · ChatMessageMapper
+│   └── TextDateTimeMapper              考试信息
+│
+├── tool/                              ④  基础设施：文件 → 纯文本
+│   ├── DocxTextReader                  Apache POI 抽 .docx
+│   └── PdfTextReader                   Apache PDFBox 抽 .pdf（附扫描件体检提示）
+│
+├── config/                            ④  基础设施：装配
+│   ├── MybatisPlusConfig               分页插件 + 公共字段自动填充（MetaObjectHandler）
+│   ├── SpaWebConfig                    SPA 路由回退（替代 nginx try_files）
+│   └── ToolConfig                      通用工具类 Bean 注册
+│
+└── handler/
+    └── GlobalExceptionHandler          全局异常 → 统一响应体
+```
+
+另外两个模块：
+
+```
+asteria-common/src/main/java/com/asteria/common/
+├── Tool/
+│   ├── QuestionParser      ★ 核心解析器：纯文本规则切题、章节识别、题型线索
+│   ├── RawQuestion         解析中间产物（题干 / 选项 / 答案 / 章节 / 题型）
+│   ├── QuestionOption      解析期选项模型
+│   └── FileTextReader      通用编码文本读取（txt）
+├── result/ApiResponse      统一响应体 { code, message, data }
+└── exception/BusinessException   业务异常（带错误码）
+
+asteria-pojo/src/main/java/com/asteria/pojo/
+├── entity/                 数据库实体（Bank / Chapter / Question / …）
+│   ├── DTO/                请求入参
+│   └── VO/                 响应视图对象
+└── enums/                  QuestionType · ImportStatus · AiStatus · AnswerSource · …
+```
+
+### 关键流程
+
+**题库导入**：主线程登记任务后立刻返回，解析与入库全部在后台线程完成，前端靠 `taskId` 轮询进度。
+
+```
+POST /api/banks/import  (multipart)
+        │
+        ▼
+  BanksController ─► BanksService.importBank
+        │  ① 在 import_task 表登记任务（PENDING）
+        │  ② 文件落盘 uploads/，写一份内存快照供轮询
+        │  ③ new Thread("import-<taskId>") 异步启动，主线程立即返回 taskId
+        ▼
+┌───────────────── 后台线程：processImport ─────────────────┐
+│  ① 抽取文本     docx→POI   pdf→PDFBox   txt→按编码读取      │
+│  ② 规则切题     QuestionParser.parse → List<RawQuestion>   │
+│  ②.5 兜底       规则不可用？→ AiQuestionExtractor（JSON 抽取）│
+│  ③ 输出质检     QuestionQualityCheck（仅日志）              │
+│  ④ 事务入库     BanksImportTransactional.saveImport       │
+│                  bank / chapter / question 同一事务         │
+│  ⑤ AI 增强      QuestionAiEnricher（虚拟线程并发逐题）       │
+│                 进度写内存，前端轮询 GET /import/{taskId}    │
+└──────────────────────────────────────────────────────────┘
+        │
+        ▼
+   终态：SUCCESS / AI_PROCESSING / FAILED（失败原因落库）
+```
+
+**AI 答疑（SSE + 工具调用）**：模型每次请求现场构造，历史手动拼接，工具由模型自主决定是否调用。
+
+```
+POST /api/chat/sessions/{id}/messages
+        │
+        ▼
+  AiChatController ─► ChatService
+        │  ① 载入历史（最近 100 条 / 30000 字符，两道闸按正序拼接）
+        │  ② AiChatModelFactory 用请求头的 Key / baseUrl / model 现场造模型
+        ▼
+   OpenAiChatModel  ◄──  系统提示词  +  历史消息  +  本轮提问
+        │
+        │  模型自主决定是否调用工具
+        ├──► QuestionBankTools
+        │        ├── listBanks()                          列题库
+        │        ├── searchQuestions(keyword, …, limit)    按关键词搜题
+        │        └── getQuestionDetail(questionId)         取单题完整内容
+        │             └─ 查 MySQL，结果回喂给模型，模型据此作答
+        ▼
+   SSE 回前端： chunk（增量文本） · done（结束 + messageId） · error（已脱敏）
+```
 
 ---
 
@@ -67,32 +283,6 @@ OpenAI / DeepSeek / Moonshot / 通义 / 智谱 / 自建中转站。
 4. **刷题**：顺序 / 随机出题、错题练习、提交答案、查看结果与统计
 5. **知识点总结**：按题库让 AI 汇总知识点与易错点，结果落库做缓存（命中缓存不再调 AI）
 6. **AI 答疑**：SSE 流式对话，带**对话记忆**与**工具调用**——AI 可以自己查题库列表、按关键词搜题、取某道题的完整内容（含选项、答案、解析），再像老师一样讲解
-
----
-
-## 模块结构
-
-```
-asteria/                     父工程：只做依赖版本管理与模块聚合，不含业务代码
-├── asteria-common/          与 Web 无关的纯工具（不依赖 Spring）
-│   ├── Tool/                QuestionParser（题目切分）、QuestionOption、RawQuestion、FileTextReader
-│   ├── exception/           BusinessException
-│   └── result/              ApiResponse（统一响应体）
-├── asteria-pojo/            数据模型：entity / DTO / VO / enums
-└── asteria-server/          可执行服务端
-    ├── ai/                  AI 接入层：配置、模型工厂、提示词、工具、脱敏、导入增强
-    ├── config/              MyBatis-Plus 配置（分页插件 + 公共字段自动填充）
-    ├── controller/          HTTP 入口
-    ├── handler/             全局异常处理
-    ├── mapper/              MyBatis-Plus Mapper
-    ├── parser/              题型判定、答案归一化
-    ├── Services/            业务接口；impl/ 为实现
-    └── tool/                docx / pdf 文本抽取
-```
-
-依赖方向是单向的：`asteria-server → asteria-pojo / asteria-common`，
-`asteria-common` 与 `asteria-pojo` 互不相识（所以解析用的 `QuestionOption` 和展示用的
-`QuestionOptionVO` 各有一份）。
 
 ---
 
@@ -182,6 +372,7 @@ java -jar asteria-server/target/asteria-server-0.0.1-SNAPSHOT.jar
 **方式 C：一个 jar 自带前端（打包分发时推荐）**——`asteria-server/pom.xml` 里已经配好
 `maven-resources-plugin`，打包时会把 `asteria-ai/dist` 拷进 jar 的 `static/` 目录，
 启动后直接访问 `http://localhost:8080` 就是完整界面，不需要 nginx。
+SPA 的前端路由回退由 `SpaWebConfig` 在应用内完成（等价于 nginx 的 `try_files`）。
 
 ```bash
 # 前端源码改过时，必须先重新构建（产物在 asteria-ai/dist）
