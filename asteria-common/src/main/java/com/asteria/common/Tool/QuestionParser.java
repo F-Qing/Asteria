@@ -5,18 +5,75 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public class QuestionParser {
-    /** 题号行：① 【第 1 题】 ② （1）/（一） ③ 1、 或 1. 开头 */
+
+    /**
+     * 题号的"核心写法"（不含 Markdown 前缀 / 包裹符号），供【题号行】和【题号自带题干】两处复用。
+     *
+     * <p>覆盖：
+     * <ul>
+     *   <li>{@code 【第 1 题】} / {@code 【1】} / {@code [1]} —— 方括号包裹（AI 整理、教材常见）</li>
+     *   <li>{@code 第 1 题} —— 裸写"第 N 题"（超星/学习通导出常见）</li>
+     *   <li>{@code （1）} / {@code (1)} —— 圆括号包裹</li>
+     *   <li>{@code 1、} {@code 1.} {@code 1．} {@code 1)} {@code 1）} —— 数字 + 分隔符</li>
+     * </ul>
+     */
+    private static final String NUMBER_CORE =
+            "(?:"
+                    + "【\\s*第\\s*\\d+\\s*题\\s*】"
+                    + "|【\\s*\\d+\\s*】"
+                    + "|\\[\\s*\\d+\\s*\\]"
+                    + "|第\\s*\\d+\\s*题"
+                    + "|[（(]\\s*\\d+\\s*[）)]"
+                    + "|\\d+\\s*[、.．)）]"
+                    + ")";
+
+    /**
+     * 行首可选的前缀：Markdown 引用 {@code >}、标题 {@code #}、列表 {@code - / * / +}、加粗 {@code **}。
+     *
+     * <p>很多从网页/笔记复制出来的题库会带这些标记（{@code **1.** 题干}、{@code ## 1. 题干}），
+     * 不剥掉的话题号行认不出来，整份文件直接掉进 AI 兜底。
+     */
+    private static final String LINE_PREFIX =
+            "(?:>\\s*)?(?:#{1,6}\\s*)?(?:[-*+]\\s+)?(?:\\*\\*\\s*)?";
+
+    /**
+     * 题号行。
+     *
+     * <p>三种写法：
+     * <ul>
+     *   <li>① {@code 【第 1 题】}</li>
+     *   <li>② {@code （1）} / {@code (1)} / {@code 第1题} / {@code 【1】} / {@code [1]}</li>
+     *   <li>③ {@code 1、} 或 {@code 1.} 开头（数字后必须跟内容，避免把孤零零的 "3." 当题号）</li>
+     * </ul>
+     *
+     * <p>③ 加了 {@code \\S} 收尾：只有分隔符、后面没内容的行不算题号。
+     */
     public static final Pattern QUESTION_HEADER =
-            Pattern.compile("^\\s*【\\s*第\\s*\\d+\\s*题\\s*】|^\\s*[（(]\\s*\\d+\\s*[）)]|^\\s*\\d+\\s*[、.．]\\s*\\S");
+            Pattern.compile("^\\s*" + LINE_PREFIX
+                    + "(?:"
+                    + "【\\s*第\\s*\\d+\\s*题\\s*】"
+                    + "|【\\s*\\d+\\s*】"
+                    + "|\\[\\s*\\d+\\s*\\]"
+                    + "|第\\s*\\d+\\s*题"
+                    + "|[（(]\\s*\\d+\\s*[）)]"
+                    + "|\\d+\\s*[、.．)）]\\s*\\S"
+                    + ")");
 
     /**
      * 题号行**自带题干**的写法：<b>（1）Python语言属于以下哪种语言？</b> / <b>1．下列不属于…</b>
+     * / <b>第1题 下列说法正确的是</b> / <b>【1】题干</b>
      *
      * <p>教材类 Word 很少写「题目：」这个标签，题干就紧跟在题号后面；没有这条规则，
      * 题号行只能落进"可疑行"，题干永远提不出来（整份文件一道题都入不了库）。
+     *
+     * <p>与 {@link #QUESTION_HEADER} 的区别：这条要**捕获**题号后面的题干（group 1），
+     * 所以把 {@code \S} 换成 {@code (.+?)}；并且容忍题号后再跟一个分隔符（如「1．：」）。
      */
     private static final Pattern NUMBERED_STEM_PATTERN =
-            Pattern.compile("^\\s*(?:[（(]\\s*\\d+\\s*[）)]|\\d+\\s*[、.．])\\s*(.+)$");
+            Pattern.compile("^\\s*" + LINE_PREFIX
+                    + "(?:[（(]\\s*\\d+\\s*[）)]|\\d+\\s*[、.．)）]|第\\s*\\d+\\s*题"
+                    + "|【\\s*第\\s*\\d+\\s*题\\s*】|【\\s*\\d+\\s*】|\\[\\s*\\d+\\s*\\])"
+                    + "\\s*[、.．:：]?\\s*\\*{0,2}\\s*(.+?)\\s*$");
 
     /**
      * 题型小节行：<b>1．选择题 / 2、简答题 / 三、判断题</b>
@@ -56,9 +113,9 @@ public class QuestionParser {
     /** 裸章节标题行的最大长度：超过这个长度就当成正文，不当标题 */
     private static final int BARE_CHAPTER_MAX_LENGTH = 30;
 
-    /** 题型：xxx（常和题号写在同一行） */
+    /** 题型：xxx（常和题号写在同一行）；也兼容【题型】xxx */
     private static final Pattern TYPE_PATTERN =
-            Pattern.compile("题型[：:]\\s*(\\S+)");
+            Pattern.compile("(?:题型\\s*[:：]\\s*|【\\s*题型\\s*】\\s*)(\\S+)");
 
     /** 题干：题目：xxx / 题干：xxx */
     private static final Pattern STEM_PATTERN =
@@ -68,25 +125,54 @@ public class QuestionParser {
     private static final Pattern OPTION_LABEL_PATTERN =
             Pattern.compile("^\\s*选项\\s*[:：]?\\s*(.*)$");
 
-    /** 选项行：A. xxx / A、xxx / Ａ．xxx（兼容全角字母） */
+    /**
+     * 选项行：<b>A. xxx</b> / <b>A、xxx</b> / <b>A：xxx</b> / <b>（A）xxx</b> / <b>【A】xxx</b>。
+     *
+     * <p>相比旧版新增两类真实写法：
+     * <ul>
+     *   <li>字母被括号包住：{@code （A）中文} / {@code (A)中文} / {@code 【A】中文}（教材、教辅常见）</li>
+     *   <li>冒号分隔：{@code A：中文} / {@code A:中文}（网课导出常见）</li>
+     * </ul>
+     * 全角字母 {@code Ａ}、全角分隔符 {@code ．} 依旧兼容。
+     */
     private static final Pattern OPTION_PATTERN =
-            Pattern.compile("^\\s*([A-Za-zＡ-Ｚａ-ｚ])\\s*[.、．)）]\\s*(.+)$");
+            Pattern.compile("^\\s*" + LINE_PREFIX
+                    + "(?:[（(【\\[]\\s*)?\\s*([A-Za-zＡ-Ｚａ-ｚ])\\s*[.、．:：)）\\]】]\\s*(.+)$");
 
     /** 我的答案：xxx —— 直接忽略（做题人写的，不是标准答案） */
     private static final Pattern MY_ANSWER_PATTERN =
             Pattern.compile("^\\s*我的答案\\s*[:：].*$");
 
-    /** 带标签的答案行：正确答案 / 参考答案 / 答案，取冒号后**整段原文**（不截断、不归一化） */
+    /**
+     * 带标签的答案行，取标签后**整段原文**（不截断、不归一化）。
+     *
+     * <p>三种写法：
+     * <ul>
+     *   <li>{@code 正确答案：} / {@code 参考答案：} / {@code 答案：}</li>
+     *   <li>{@code 【答案】} / {@code 【正确答案】} —— 超星/学习通导出的标准写法</li>
+     *   <li>{@code 答：} —— 简答题常见</li>
+     * </ul>
+     */
     private static final Pattern ANSWER_LABEL_PATTERN =
-            Pattern.compile("^\\s*(?:正确答案|参考答案|答案)\\s*[:：]\\s*(.+)$");
+            Pattern.compile("^\\s*(?:【\\s*(?:正确答案|参考答案|答案)\\s*】|(?:正确答案|参考答案|答案|答)\\s*[:：])\\s*(.+)$");
 
     /**
      * 行内找答案：兼容"我的答案：xxx    正确答案：yyy"写在同一行的情况（用 find 搜索，不要求行首）。
-     * <p>只认"正确答案/参考答案"，**故意不认单独的"答案"** ——
+     * <p>只认"正确答案/参考答案"和方括号形式，**故意不认单独的"答案/答"** ——
      * 因为"我的答案："里也含"答案"两个字，认了就会把做题人的答案当成标准答案。
      */
     private static final Pattern ANSWER_INLINE_PATTERN =
-            Pattern.compile("(?:正确答案|参考答案)\\s*[:：]\\s*(.+)$");
+            Pattern.compile("(?:(?:正确答案|参考答案)\\s*[:：]|【\\s*(?:正确答案|参考答案|答案)\\s*】)\\s*(.+)$");
+
+    /**
+     * 粘在选项末尾的答案：{@code D. 丁 答案：D}。
+     *
+     * <p>为什么单独一条、而不是复用 {@link #ANSWER_INLINE_PATTERN}：这里的位置特殊性——
+     * 它出现在**选项内容的末尾**，前面一定是选项文字，所以裸「答案：」可以放心认。
+     * 唯一的坑还是"我的答案"，用定长后顾 {@code (?<!我的)} 排掉。
+     */
+    private static final Pattern TRAILING_ANSWER_PATTERN =
+            Pattern.compile("(?<!我的)(?:正确答案|参考答案|答案)\\s*[:：]\\s*(.+)$");
 
     /** 分隔线：------ / ====== / ~~~~~~ */
     private static final Pattern SEPARATOR_PATTERN =
@@ -102,6 +188,22 @@ public class QuestionParser {
 
     /** 裸答案不会超过这个长度（再长肯定不是答案） */
     private static final int BARE_ANSWER_MAX_LENGTH = 20;
+
+    /**
+     * 行内选项的"标记"：行首或空白之后，一个字母 + 分隔符。
+     *
+     * <p>{@code (?:^|\s)} 这个前置断言很关键：它保证字母是"独立开头"的，
+     * 不会把 {@code e.g.}、{@code U.S.}、{@code 答A.} 这类词内的点号误判成选项标记。
+     */
+    private static final Pattern INLINE_OPTION_MARK =
+            Pattern.compile("(?:^|\\s)([A-Za-zＡ-Ｚａ-ｚ])\\s*[.、．:：)）]\\s*");
+
+    /** 代码行特征：含这些就别做行内选项拆分，免得把 Python/C 代码里的 {@code A.} 之类误切 */
+    private static final Pattern CODE_LIKE_PATTERN =
+            Pattern.compile("[{};]|//|\\bdef\\s|\\bprintf\\s*\\(|\\bcout\\b|System\\.out|\\bprint\\s*\\(");
+
+    /** 行内选项最多认到第几个字母（超过 8 个选项八成不是选项，是正文） */
+    private static final int MAX_INLINE_OPTIONS = 8;
 
     /** 入口一：整份文本 → 题目列表 */
     public List<RawQuestion> parse(String text) {
@@ -237,6 +339,8 @@ public class QuestionParser {
         }
 
         // 弱特征：裸写的"第一章 绪论"。加两重限制，否则题干会被吞掉：
+        //   ① 整行不能太长（标题不会是一整句话）
+        //   ② 不能带句末标点（带问号的多半是题干）
         if (text.length() > BARE_CHAPTER_MAX_LENGTH
                 || text.contains("。") || text.contains("？") || text.contains("！") || text.contains("?")) {
             return null;
@@ -268,20 +372,30 @@ public class QuestionParser {
                 }
             }
 
-            // 2) 题干
+            // 2) 题干：题目：xxx / 题干：xxx
             if (rawStem == null) {
                 var m = STEM_PATTERN.matcher(line);
                 if (m.matches()) {
-                    rawStem = m.group(1).trim();
+                    StemAndOptions split = splitStemAndInlineOptions(stripBold(m.group(1)));
+                    rawStem = split.stem();
+                    if (rawAnswer == null) {
+                        rawAnswer = split.inlineAnswer();
+                    }
+                    rawOptions.addAll(split.options());
                     continue;
                 }
             }
 
-            // 2.5) 题号行自带题干：（1）xxx / 1．xxx —— 教材里最常见的写法，题干就在题号后面
+            // 2.5) 题号行自带题干：（1）xxx / 1．xxx / 第1题 xxx / 【1】xxx —— 教材里最常见的写法
             if (rawStem == null) {
                 var m = NUMBERED_STEM_PATTERN.matcher(line);
                 if (m.matches()) {
-                    rawStem = m.group(1).trim();
+                    StemAndOptions split = splitStemAndInlineOptions(stripBold(m.group(1)));
+                    rawStem = split.stem();
+                    if (rawAnswer == null) {
+                        rawAnswer = split.inlineAnswer();
+                    }
+                    rawOptions.addAll(split.options());
                     continue;
                 }
             }
@@ -297,11 +411,23 @@ public class QuestionParser {
                 continue;
             }
 
-            // 4) 选项行：靠"字母 + 分隔符"这个特征识别，不依赖"选项："标签
+            // 4) 选项行：
+            //    4.0 先试"一行塞了多个选项"（A. 甲 B. 乙 C. 丙）—— 旧版会把它们当成一个选项
+            if (rawStem != null) {
+                StemAndOptions split = splitStemAndInlineOptions(line.trim());
+                if (!split.options().isEmpty() && split.stem().isEmpty()) {
+                    rawOptions.addAll(split.options());
+                    if (rawAnswer == null && split.inlineAnswer() != null) {
+                        rawAnswer = split.inlineAnswer();
+                    }
+                    continue;
+                }
+            }
+            //    4.1 单个选项：靠"字母 + 分隔符"这个特征识别，不依赖"选项："标签
             var optionMatcher = OPTION_PATTERN.matcher(line);
             if (optionMatcher.matches()) {
                 rawOptions.add(new QuestionOption(normalizeLetter(optionMatcher.group(1)),
-                        optionMatcher.group(2).trim()));
+                        stripBold(optionMatcher.group(2))));
                 continue;
             }
 
@@ -309,12 +435,12 @@ public class QuestionParser {
             if (rawAnswer == null) {
                 var inline = ANSWER_INLINE_PATTERN.matcher(line);
                 if (inline.find()) {
-                    rawAnswer = inline.group(1).trim();
+                    rawAnswer = stripBold(inline.group(1));
                     continue;
                 }
                 var anchored = ANSWER_LABEL_PATTERN.matcher(line);
                 if (anchored.matches()) {
-                    rawAnswer = anchored.group(1).trim();
+                    rawAnswer = stripBold(anchored.group(1));
                     continue;
                 }
             }
@@ -325,8 +451,9 @@ public class QuestionParser {
             }
 
             // 7) 裸答案行：选项块之后，整行只有答案（字母必须在本题选项里）
-            if (rawAnswer == null && !rawOptions.isEmpty() && isBareAnswer(line.trim(), rawOptions)) {
-                rawAnswer = line.trim();
+            String bareAnswer = stripBold(line);
+            if (rawAnswer == null && !rawOptions.isEmpty() && isBareAnswer(bareAnswer, rawOptions)) {
+                rawAnswer = bareAnswer;
                 continue;
             }
 
@@ -343,6 +470,93 @@ public class QuestionParser {
         }
 
         return new RawQuestion(rawType, rawStem, rawOptions, rawAnswer, chapterName, startLine, suspicious);
+    }
+
+    /**
+     * 把"题号后面的整段文字"再拆成：题干 + 内联选项 + 内联答案。
+     *
+     * <p>为什么需要它：{@code 1. 下列哪个是语言？ A. 中文 B. 英文 C. 法文 D. 德文}
+     * 这种"题干和选项挤在同一行"的写法在 txt/pdf 里极常见。旧版会把整串当题干，
+     * 选项一个都提不出来（题目入库后没有选项，等于废题）。
+     *
+     * <p>拆不出来（或不满足连续 A/B/C 的强特征）时，原样当题干返回，绝不动刀 ——
+     * 宁可少拆，也不要把正文误切成选项。
+     */
+    private StemAndOptions splitStemAndInlineOptions(String text) {
+        InlineOptions parsed = splitInlineOptions(text);
+        if (parsed == null) {
+            return new StemAndOptions(text, List.of(), null);
+        }
+        return new StemAndOptions(parsed.prefix(), parsed.options(), parsed.trailingAnswer());
+    }
+
+    /**
+     * 从一行里拆内联选项。
+     *
+     * <p>判定门槛（三重，缺一不可，目的是"宁可漏拆，不可错拆"）：
+     * <ol>
+     *   <li>至少 2 个标记（一个标记多半只是正文里的字母）；</li>
+     *   <li>字母从 <b>A</b> 开始且严格连续（{@code A,B,C,D}），跳号或乱序一律不拆；</li>
+     *   <li>每个标记后面都有非空内容（{@code A.} 后面啥都没有 → 不拆）。</li>
+     * </ol>
+     *
+     * @return 不满足门槛 → <b>null</b>；满足 → 前缀（题干）+ 选项列表 + 可能的内联答案
+     */
+    private InlineOptions splitInlineOptions(String line) {
+        if (line == null || line.isBlank() || CODE_LIKE_PATTERN.matcher(line).find()) {
+            return null;
+        }
+
+        var matcher = INLINE_OPTION_MARK.matcher(line);
+        List<Integer> markStarts = new ArrayList<>();    // 每个标记的起点
+        List<Integer> contentStarts = new ArrayList<>(); // 每个选项内容的起点（分隔符之后）
+        List<String> letters = new ArrayList<>();        // 每个标记的字母（已归一化）
+
+        while (matcher.find()) {
+            letters.add(normalizeLetter(matcher.group(1)));
+            markStarts.add(matcher.start());
+            contentStarts.add(matcher.end());
+        }
+
+        if (letters.size() < 2 || letters.size() > MAX_INLINE_OPTIONS) {
+            return null;
+        }
+        // 必须从 A 开始、且严格连续递增
+        if (!"A".equals(letters.get(0))) {
+            return null;
+        }
+        for (int i = 1; i < letters.size(); i++) {
+            if (letters.get(i).charAt(0) != letters.get(i - 1).charAt(0) + 1) {
+                return null;
+            }
+        }
+
+        List<QuestionOption> options = new ArrayList<>();
+        for (int i = 0; i < letters.size(); i++) {
+            int from = contentStarts.get(i);
+            int to = (i + 1 < letters.size()) ? markStarts.get(i + 1) : line.length();
+            String content = line.substring(from, to).trim();
+            if (content.isEmpty()) {
+                return null;                            // 某个选项是空的 → 不拆
+            }
+            options.add(new QuestionOption(letters.get(i), content));
+        }
+
+        // 末选项内容里可能还粘着答案（A. 甲 B. 乙 答案：B）→ 把它剥出来
+        String trailingAnswer = null;
+        QuestionOption last = options.get(options.size() - 1);
+        var answerMatcher = TRAILING_ANSWER_PATTERN.matcher(last.getText());
+        if (answerMatcher.find()) {
+            String trimmed = last.getText().substring(0, answerMatcher.start()).trim();
+            if (trimmed.isEmpty()) {
+                return null;                            // 最后一个选项本来就是空的，不拆
+            }
+            trailingAnswer = stripBold(answerMatcher.group(1));
+            options.set(options.size() - 1, new QuestionOption(last.getKey(), trimmed));
+        }
+
+        String prefix = line.substring(0, markStarts.get(0)).trim();
+        return new InlineOptions(prefix, options, trailingAnswer);
     }
 
     /** 是不是"裸答案行"：整行只有对错词，或整行只有本题选项里的字母 */
@@ -369,6 +583,29 @@ public class QuestionParser {
         return true;
     }
 
+    /**
+     * 剥掉 Markdown <b>加粗</b> 残留（行首/行尾的 {@code **}）。
+     *
+     * <p>从网页/笔记复制出来的题库常带加粗：{@code **A. 甲**}、{@code **【答案】B**}。
+     * 前缀交给 {@link #LINE_PREFIX} 吃掉，收尾的这对星号要在取值时剥掉。
+     *
+     * <p>只认<b>成对的两个星号</b>，不碰单个 {@code *} 和下划线 {@code _} ——
+     * 否则会把 Python 选项里的 {@code *args}、{@code __init__} 误伤成 {@code args}、{@code init}。
+     */
+    private String stripBold(String text) {
+        if (text == null) {
+            return null;
+        }
+        String t = text.trim();
+        if (t.startsWith("**")) {
+            t = t.substring(2).trim();
+        }
+        if (t.endsWith("**")) {
+            t = t.substring(0, t.length() - 2).trim();
+        }
+        return t;
+    }
+
     /** 全角字母转半角并统一大写：Ａ→A、a→A */
     private String normalizeLetter(String letter) {
         char c = letter.charAt(0);
@@ -378,5 +615,13 @@ public class QuestionParser {
             c = (char) (c - 'ａ' + 'a');
         }
         return String.valueOf(Character.toUpperCase(c));
+    }
+
+    /** 题干拆分结果：题干 + 从题干里拆出来的内联选项 + 可能的内联答案 */
+    private record StemAndOptions(String stem, List<QuestionOption> options, String inlineAnswer) {
+    }
+
+    /** 内联选项拆分结果：前缀（题干）+ 选项 + 尾部答案 */
+    private record InlineOptions(String prefix, List<QuestionOption> options, String trailingAnswer) {
     }
 }
