@@ -39,6 +39,7 @@
 - [接口一览](#接口一览)
 - [数据库](#数据库)
 - [AI 能力与设计要点](#ai-能力与设计要点)
+- [测试](#测试)
 - [已知限制](#已知限制)
 
 ---
@@ -301,12 +302,13 @@ OpenAI / DeepSeek / Moonshot / 通义 / 智谱 / 自建中转站。
 mysql -uroot -p -e "CREATE DATABASE finaltext DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
 ```
 
-按顺序执行 `asteria-server/src/main/resources/db/` 下的 6 个脚本（都带 `USE finaltext;`，且可重复执行）：
+按顺序执行 `asteria-server/src/main/resources/db/` 下的 8 个脚本
+（都带 `USE finaltext;`，且**可重复执行**——迁移脚本会先查 `information_schema` 判断对象是否存在）：
 
 ```bash
 cd asteria-server/src/main/resources/db
 mysql -uroot -p < bank_tables.sql
-# ...其余脚本同理
+# ...其余脚本同理，按下面表格的顺序
 ```
 
 | 顺序 | 脚本 | 内容 |
@@ -317,6 +319,11 @@ mysql -uroot -p < bank_tables.sql
 | 4 | `knowledge_summary.sql` | 知识点总结缓存 |
 | 5 | `chat_tables.sql` | `chat_session` / `chat_message` |
 | 6 | `textdatetime.sql` | 考试信息表 |
+| 7 | `question_ai_columns.sql` | **增量迁移**：给 `question` 加 AI 解析状态与答案来源列（`ai_status` / `ai_error` / `ai_retry_count` / `answer_source` / `ai_enriched_at`） |
+| 8 | `practice_record_index.sql` | **增量迁移**：给 `practice_record` 加 `(session_id, is_correct)` 索引，加速答题时的计数与错题查询 |
+
+> 第 7、8 个是**后加的增量迁移脚本**：老库直接在原表上 `ALTER`，不需要重建表、不影响已有数据
+> （新增列的默认值就是老数据的正确值：`ai_status='PENDING'`、`answer_source='FILE'`）。
 
 ### 2. 配置数据库
 
@@ -409,7 +416,7 @@ cd .. && mvn clean package -DskipTests
 | `X-AI-Provider` | 服务商标识（仅用于展示/日志） |
 | `X-AI-Key` | API Key |
 | `X-AI-Base-Url` | 接口地址，需包含版本段，例如 `https://api.deepseek.com/v1` |
-| `X-AI-Model` | 模型名，例如 `deepseek-chat` |
+| `X-AI-Model` | 模型名，例如 `deepseek-flash` |
 
 后端的处理约定：
 
@@ -559,13 +566,71 @@ chat_session ──< chat_message            （删会话时消息 ON DELETE CAS
   还会让 `temperature` 失效（官方文档：思考模式下 temperature 无效）。
   `AiChatModelFactory.createForImport` 只对这几个模型带 `thinking: {"type":"disabled"}`；
   其它服务商、以及不认这个字段的老模型（`deepseek-chat` / `deepseek-reasoner`）一个字段都不加。
+- **分块有硬上限**：目标 2000 字一块、**硬上限 4000 字** —— 即使整篇题号一个都认不出来
+  （正是最需要 AI 的情况），块也不会无限大。一份 50 题、1.1 万字的题库实际切成约 6 块、每块约 9 题。
 
-### 2. 知识点总结
+#### 逐题补解析（AI 解析增强）
+
+补解析是**按题调模型**的，所以这一层的关键词是「**别重复花钱**」——模型调用不是幂等的，
+重试一次就是真扣一次钱。
+
+- **并发**：用 **JDK 21 虚拟线程**（`Executors.newVirtualThreadPerTaskExecutor()`）并发跑，
+  配 `Semaphore(6)` 限制同时在飞的请求数。并发度是照**数据库连接池**反推的
+  （HikariCP 默认 10 条连接，进度和任务状态也要写库，所以留余量取 6）。
+  用信号量而不是固定大小线程池，是遵循 JEP 444 的建议：*不要把虚拟线程池化来限流*。
+- **不重复处理**：只捞 `ai_status != 'DONE'` 的题。已解析成功的题永远不会再被捞出来，
+  所以崩溃后重跑**只处理没做完的部分**。
+- **可追溯**：`ai_status`（PENDING/DONE/FAILED）+ `ai_error` + `ai_retry_count`，
+  失败原因脱敏后落库。
+- **数据血缘**：`answer_source` 区分 `FILE`（原文解析）/ `AI`（模型补的）/ `MANUAL`（人工改的）。
+  **题目原本有答案时绝不用 AI 结果覆盖** —— 文件里的答案比模型可信。
+  没有这个标记，将来想做"人工复核 AI 补的答案"或"回滚 AI 的改动"就无从下手，
+  因为原始数据已经被覆盖了。
+- **部分失败不毁整批**：单题失败只记账（标 `FAILED`）并继续跑完，题库照常建成、用户照样能刷题；
+  导入完成卡片写明「其中 N 道题未生成解析」。
+- **账号级失败立刻停手**：余额不足 / 限流 / Key 失效时，**接下来每道题都会失败**，
+  所以识别到就中断，不再白跑完整个题库。识别方式是沿**异常链**找关键词
+  （`insufficient` / `quota` / `rate limit` / `401` / `402` / `429` / 余额 / 欠费 / 限流），
+  并带**深度上限**防止异常链成环时死循环。
+  另外会把刚才因账号问题标 `FAILED` 的题**改回 `PENDING`** —— 它们失败的原因在账号、
+  不在题目，标成 FAILED 会让人误以为题目有问题。
+- **错误信息不甩原文给用户**：服务商的报文（`401 - {"error":...request_id...}`）只进日志，
+  界面上是归类后的一句话（"AI 账号鉴权失败，请到「设置」页检查 API Key"）。
+  判断顺序是**先看报文关键词、最后才用状态码兜底** —— 因为 DeepSeek 的"余额不足"返回的是
+  **429** 而不是 402，按状态码判会误报成"请求太频繁"，把用户引向错误的处理方式。
+
+> **为什么不让 AI 直接当切题主力**：规则解析可复现、零成本、能写断言、出错能定位到具体哪条正则；
+> AI 每次结果可能不同、要花钱、出错只能猜。正常格式的文件走规则层就够了，AI 只做"规则接不上时的兜底"
+> 和"补解析文案"这两件事。
+
+### 2. 输出侧自检
+
+解析完之后 `QuestionQualityCheck` 会跑一遍确定性检查，**只打日志、不改数据、不阻断入库**：
+
+| 检查项 | 判据 |
+|---|---|
+| 无题干 | 题干为空（入库阶段本来会跳过，这里提前报出来） |
+| 缺答案 | 没提取到答案 |
+| 选项不足 | 判成单选/多选却少于 2 个选项 |
+| **答案越界** | **答案字母不在选项字母集合里** ← 最可靠的问题信号 |
+| 选项重复 | 同一题里出现两个 A |
+| 有可疑行 | 解析器收块时没认出来的行（这就是 `RawQuestion.suspicious` 的用途） |
+
+**「答案越界」为什么最有价值**：答案 D 但选项只有 A/B/C —— 这不可能是题目本身如此，
+**几乎必然是切题切错了**。所以它相当于一个**免费的错误探针**：跑一次导入就知道这批数据的健康度，
+不用人工逐题核对。
+
+> 判定时踩过两个坑，都写进了注释：① 不能用 `Character.isLetter()` 判答案字母——
+> 它对中文也返回 `true`，而判断题答案是「对」/「错」，会导致**每道判断题都误报**；
+> ② 不能扫整段答案——学习通导出的答案是 `D；标签和其属性构成了HTML元素;` 这种形态，
+> 全文里的英文（"HTML"）会被当成答案字母。修法是**只取开头那段选项字母**。
+
+### 3. 知识点总结
 
 取题库内最多 **300 道**题的题干与答案拼成材料，温度 **0.3**（要稳定），
 结果写回 `knowledge_summary` 做缓存；再次请求同题库直接读缓存，不再调用模型。
 
-### 3. AI 聊天
+### 4. AI 聊天
 
 - **模型按请求现场构造**：`AiChatModelFactory` 每次用请求头里的 Key / baseUrl / model 造一个
   `OpenAiChatModel`，用完即弃——BYOK 模式下不能复用单例，否则会把 A 的 Key 用到 B 的请求上。
@@ -588,11 +653,44 @@ chat_session ──< chat_message            （删会话时消息 ON DELETE CAS
   **学科知识（原理/推导/举例）可以放心展开讲**。此外约束它不暴露内部 id、
   不罗列超过上限的题目、解析缺失时说明是"我自己的讲解"而非官方解析。
 
-### 4. 安全
+### 5. 安全
 
 - Key 只在造 `OpenAiApi` 时使用，不落库、不进日志
 - 上游异常统一 `AiErrors.mask()` 脱敏后再返回前端
 - 工具返回的题目内容来自本库，不含用户凭据
+
+---
+
+## 测试
+
+```bash
+mvn clean test        # 130 个用例，全部通过（10 个测试类）
+```
+
+测试**只覆盖纯逻辑**（不连数据库、不调真实模型），因此能作为回归门禁稳定运行：
+
+| 测试类 | 盯住什么 |
+|---|---|
+| `QuestionParserTest` | ★ 核心解析器（约 30 个用例）：题号 / 章节 / 选项 / 答案的各种写法，以及**不该被误判的边界**（含"这些写法暂时不认"的显式记录） |
+| `QuestionQualityCheckTest` | 输出侧自检的每一条规则，含一组「不该报的不能报」的误报测试 |
+| `QuestionQualityCheckRealFormatTest` | **拿真实学习通导出格式**跑一遍自检，确认零误报 |
+| `AiQuestionExtractorTest` | AI 抽取的逐题校验闸门（空题干丢弃 / 非法选项丢弃 / 答案越界只丢答案） |
+| `AiJsonRepairTest` | LaTeX 反斜杠修复；含「证明修复前确实是坏的」的断言与幂等测试 |
+| `QuestionAiEnricherTest` | 补解析的返回值契约；题目原本有答案时**绝不覆盖**；公式不被改坏 |
+| `BanksServiceImplAiEnrichTest` | 单题失败不毁整批、账号级失败识别与归类、FAILED→PENDING 善后、异常链成环不死循环 |
+| `BanksServiceImplTest` | 上传校验矩阵、任务进度三级回落 |
+| `TextDateServiceImplTest` | 考试信息 CRUD 与倒计时等级边界 |
+
+几个测试上的取舍值得一提：
+
+- **AI 相关的测试用 Mockito 替身**注入假的 `OpenAiChatModel`，所以不花 token、不依赖网络，
+  但真的走完整条 `enrich()` 逻辑（含 JSON 解析与反斜杠修复）。
+- **有一条用例专门断言"修复前确实是坏的"**（`AiJsonRepairTest`）：先证明 `\frac` 会被 Jackson
+  解析成「换页符 + rac」，再断言修复后完好。这样万一有人"优化"掉了修复，测试会失败。
+- **有防御性用例**（`should_notHangOnCyclicCauseChain`）：异常链成环时靠深度上限停下来，带 `@Timeout` 兜底。
+
+> 测试里不含任何硬编码的本机路径 —— `mvn test` 在任意机器上都应通过
+> （早期有一个调试脚本写死了绝对路径，已删除）。
 
 ---
 
@@ -605,6 +703,22 @@ chat_session ──< chat_message            （删会话时消息 ON DELETE CAS
 - `uploads/`（上传文件落盘目录）不入版本库
 - AI 功能依赖用户自带的 Key 与模型；**部分模型不支持 function calling**，
   此时 AI 不会调用工具，表现为"查不到题"或凭空回答
+
+### 刻意没做的（取舍，不是遗漏）
+
+| 没做 | 原因 |
+|---|---|
+| **「续跑」没有界面入口** | 后端已做到"已解析的题不重复花钱"，但用户没有按钮触发它，只能重新上传（会建新题库、全部重新解析）。加续跑入口要引入新接口 + 前端按钮 + 任务状态机，**为省几道题的 token 不值得**；失败题不多时，用没解析的部分照样能刷 |
+| **批量调用模型**（一次请求多道题） | 能进一步减少请求数，但要先**实测前缀缓存的影响**才能确定是否更划算（前缀缓存要求请求前缀完全一致） |
+| **抽题不做加权/分层/可复现** | 均匀随机在几千题规模完全够用，加策略是过度设计 |
+| **准确率评测指标** | 单用户本地应用，一个百分比没有决策价值；改为「解析自检」把问题**暴露出来**，而不是追求一个数字 |
+
+### 待改进
+
+- `Message()`（进度轮询）每次会多跑 3 次 `COUNT` 统计解析进度。几百题规模无感，
+  单库上万题 + 多人轮询时应改成一次 `GROUP BY ai_status` 聚合查询
+- `ai_status = FAILED` 的题目前不会自动重试（因为没有续跑入口），只能重新导入
+
 
 ---
 
