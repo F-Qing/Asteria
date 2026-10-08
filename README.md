@@ -7,7 +7,7 @@
 ![MySQL](https://img.shields.io/badge/MySQL-8-4479A1)
 ![License](https://img.shields.io/badge/License-未指定-lightgrey)
 
-基于 **Spring Boot 3.5 + Spring AI** 的智能刷题系统服务端。把 Word / PDF / TXT 题库文档导进来，
+基于 **Spring Boot 3.5 + Spring AI** 的智能自主导入题库刷题系统。把 Word / PDF / TXT 题库文档导进来，
 自动切题、分章节、判定题型，可选地用 AI 补全解析与知识点；在此之上提供刷题、错题本、知识点总结，
 以及一个**能自己去查题库**的 AI 答疑助手（Tool Calling）。
 
