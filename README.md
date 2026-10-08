@@ -1,4 +1,4 @@
-# Asteria · 智能刷题系统（后端）
+# Asteria · 智能自主刷题系统
 
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.16-6DB33F)
@@ -20,7 +20,7 @@
 
 > 前端（Vue 3 + Vite）源码与打包产物在 [`asteria-ai/`](./asteria-ai)，其中 `asteria-ai/dist` 是可直接部署的构建结果。
 >
-> 题库素材的来源整理，配套有一个独立的个人学习辅助工具 —— [**ChaoxingQuizTool**](https://github.com/F-Qing/ChaoxingQuizTool)：
+> 题库素材的来源整理，配套有一个独立的个人学习辅助工具，能够提取学习通题库 —— [**ChaoxingQuizTool**](https://github.com/F-Qing/ChaoxingQuizTool)：
 > 把你自己账号下可查看的题库页面整理成本系统支持导入的结构化文本（仅供个人学习资料整理使用）。
 
 ---
