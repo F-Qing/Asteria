@@ -74,8 +74,15 @@ public class BanksServiceImpl implements BanksService {
      * 开到 6 既能让模型请求充分并发（瓶颈在网络往返，不在本地），又给数据库留了余量。
      *
      * <p>调大之前先确认：① 服务商允许的并发/限流额度 ② 连接池是否跟着调大了。
+     *
+     * <p><b>2026-10-18 调整：6 → 20。</b>
+     * 依据：DeepSeek 官方文档的账号级并发上限是 deepseek-v4-pro 500 / flash 2500（按 in-flight 计），
+     * 6 远低于它 —— 说明原来的 6 根本不是被 API 限住的，而是保守取值。
+     * 放到 20 后 500 题从"84 轮×3s ≈ 4 分钟"降到"25 轮×3s ≈ 75 秒"。
+     * ⚠️ 前提：写回仍是毫秒级单条 update、连接池仍是默认 10；如果再往上调（>20），
+     * 必须先把写回改批量、并同步调大 HikariCP，否则多出来的并发只会在 getConnection() 上排队。
      */
-    private static final int AI_CONCURRENCY = 6;
+    private static final int AI_CONCURRENCY = 20;
     /** 存进 error_message 的摘要长度上限（列宽 500，这里留足余量） */
     private static final int MAX_REASON_LENGTH = 200;
     /** 分页查询单页上限，防止有人传 pageSize=100000 拉全表 */
