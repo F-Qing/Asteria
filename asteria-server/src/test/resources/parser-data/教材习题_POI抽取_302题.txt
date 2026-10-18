@@ -1,0 +1,1452 @@
+习  题  1
+1．选择题
+（1）Python语言属于以下哪种语言？（　　）
+A．机器语言
+B．汇编语言
+C．高级语言
+D．以上都不是
+（2）下列不属于Python特性的是哪一项？（　　）
+A．简单、易学
+
+B．开源的、免费的
+C．属于低级语言
+
+D．具有高可移植性
+（3）下列计算机语言中，不属于解释型语言的是哪一项？（　　）
+A．Python
+B．JavaScript
+C．C++
+D．HTML
+（4）下列哪方面的应用，不适合使用Python开发？（　　）
+A．科学运算
+B．系统运维
+C．网站设计 
+D．数据库编程
+（5）下列关于Python版本的说法中，正确的是哪一项？（　　）
+A．目前存在Python 3.x兼容Python 2.x版本的程序
+B．Python 2.x版本需要升级到Python 3.x版本才能使用
+C．目前Python 2.x版本还会发布新版本
+D．Python 2.x和Python 3.x是两个不兼容的版本
+（6）Python脚本文件的扩展名是哪一项？（　　）
+A．.pyc    
+B．.py
+C．.pt    
+D．.pyw
+（7）Python内置的集成开发环境是哪一项？（　　）
+A．PyCharm
+B．Pydev
+C．IDLE
+D．pip
+（8）以下关于Python语言的描述中，不正确的是哪一项？（　　）
+A．Python语言编写的程序比大部分编程语言编写的程序更为简洁
+B．Python语言主要是用于系统编程和Web开发的语言
+C．Python语言是解释执行的，执行速度比编译型语言慢
+D．Python程序要实现更高的执行速度，例如数值计算或动画，可以调用C语言编写的代码
+（9）以下关于计算机语言的描述中，不正确的是哪一项？（　　）
+A．解释是将源代码逐条转换成目标代码并同时逐条运行目标代码的过程
+B．C语言是静态编译语言，Python语言是脚本语言
+C．编译是将源代码转换成目标代码的过程
+D．静态语言采用解释方式执行，脚本语言采用编译方式执行
+（10）以下关于部署Python环境、运行Python程序的操作系统环境的描述中，不正确的是哪一项？（　　）
+A．不同的操作系统均可以
+B．Linux操作系统可以
+C．macOS操作系统不可以
+D．Windows操作系统可以
+2．简答题
+（1）Python语言的开发者是谁？
+（2）在Windows 10操作系统下，Python默认的安装路径是什么？
+（3）说明Python程序的运行过程。
+（4）请列举IDLE编程环境下5个快捷键的功能。
+（5）简述程序的编译方式和解释方式的区别。
+（6）简述程序设计的IPO模式的特点。
+3．编程题
+（1）参考例1-3，输入三角形的边长和高，计算并输出三角形的面积。
+（2）参考例1-6，在列表中给出若干字符串，计算并输出最长的字符串。
+（3）查阅Python的帮助文档，在“Numeric and Mathematical Modules”模块中查找相关函数，试使用其中的代数函数计算一组数中的最大值和最小值。
+
+
+
+习  题  2
+1．选择题
+（1）下列选项中，不是Python关键字的是哪一项？（　　）
+A．pass
+B．from
+C．yield
+D．static
+（2）下列选项中，可作为Python标识符的是哪一项？（　　）
+A．getpath()    
+B．throw     
+C．my#var 
+D．_My _price
+（3）下列选项中，使用bool()函数测试，值不是False的是哪一项？（　　）
+A．0
+B．[]  
+C．{}
+D．−1
+（4）假设x、y、z的值都是0，下列表达式中非法的是哪一项？（　　）
+A．x=y=z=2
+B.x,y=y,x
+C．x=(y==z+1)
+D．x=(y=z+1)
+（5）下列关于字符串的定义中，错误的是哪一项？（　　）
+A．'''hipython''' 
+B．'hipython'
+C．"hipython"
+D．[hipython]
+
+（6）下列数据类型中，Python不支持的是哪一项？（　　）
+A．char
+B．int
+C．float
+D.list
+（7）Python 语句 print(type(1/2))的输出结果是哪一项？（　　）
+A．<class 'int'>
+
+B．<class 'number'>
+C．<class 'float'>
+
+D．class <'double'>
+（8）Python语句x＝'car';y＝2;print(x＋y)的输出结果是哪一项？（　　）
+A．语法错
+B．2
+C．car2
+D．catcar
+（9）Python 语句 print(0.1+0.2==0.3)的输出结果是哪一项？（　　）
+A．True
+B．False
+C．−1
+D．0
+（10）以下语句的输出结果是哪一项？（　　）
+a=10.99
+print(complex(a))
+A．0.99
+B．10.99+j
+C．10.99
+D．(10.99+0j)
+（11）以下关于Python语言浮点数类型的描述中，不正确的是哪一项？（　　）
+A．Python语言要求所有浮点数必须带有小数部分
+B．浮点数类型表示带有小数的类型
+C．小数部分不可以为0
+D．浮点数类型与数学中实数的概念一致
+（12）Python的运算符中**的作用是哪一项？（　　）
+A．非法符号
+B．幂运算
+C．乘法运算
+D．操作数取平方
+2．简答题
+（1）什么是标识符？简述Python标识符的命名规则。
+（2）什么是关键字？True和False是否是Python的关键字？
+（3）比较运算符的运算结果是什么类型？
+（4）整数的二进制、八进制、十六进制都用什么格式表示？将十进制数转换为二进制、八进制、十六进制的函数分别是什么？
+（5）Python常用的数值类型有哪几种？请举例说明。
+3．编程题
+（1）编写程序，根据输入的三科成绩值，计算平均分和总分。
+（2）编写程序，根据输入的三角形的三条边长，输出三角形的面积。
+
+
+习  题  3
+1．选择题
+（1）下列关于字符串的表述中，不合法的是哪一项？（　　）
+A．'''python''' 
+B．[python]
+C．"p'yth'on"
+D．'py"th"on'
+（2）下列代码的输出结果是哪一项？（　　）
+print("数量{1}，单价{0}".format(23.4,34.2))
+A．数量34.2，单价23.4    
+B．数量，单价34.2   
+C．数量34，单价23
+D．数量23，单价34
+（3）下列代码的输出结果是哪一项？（　　）
+print('a'.rjust(10,"*"))
+A．a*********
+
+B．*********a
+C．aaaaaaaaaa
+
+D．a*(前有9个空格)
+（4）下列代码的输出结果是哪一项？（　　）
+>>> str1="helloPython"
+>>> min(str1)
+A．y
+B．P
+C．e
+D．运行异常
+（5）关于表达式id("45")结果的描述，不正确的是哪一项？（　　） 
+A．是一个字符串
+
+B．是一个正整数
+C．可能是46319680
+D．是"45"的内存地址
+（6）设str1="*@python@*"，语句print(str1[2:].strip("@"))的执行结果是哪一项？（　　）
+A．*@python@*
+
+B．python*
+C．python@*
+
+D．*python*
+（7）设str1="python"，语句print(str1.center(10,"*"))的执行结果是哪一项？（　　）
+A．**python**
+
+B．python****
+C．****python
+
+D．SyntaxError
+
+（8）字符串tstr="television"，显示结果为vi的选项是哪一项？（　　）
+A．print(tstr[-6:6])
+
+B．print(tstr[5:7])
+C．print(tstr[4:7])
+
+D．print(tstr[4:-2])
+（9）以下关于Python字符串的描述中，不正确的是哪一项？（　　）
+A．字符串可以表示为""或' '
+B．Python的字符串中可以混合使用正整数和负整数进行索引和切片
+C．字符串'my\\text.dat'中第一个\表示转义符
+D．Python字符串采用[N：M]格式进行切片，获取字符串从索引N到M的子字符串（包含N和M）
+（10）表达式eval("500//10")的结果是哪一项？（　　）
+A．500/10
+B．50.0
+C．50
+D．"500//10"
+2．简答题
+（1）字符串有哪几种表示形式？
+（2）format()方法的参数有哪些？
+（3）字符串合并与拆分的方法是什么，请通过示例来验证。
+（4）len('您好,Helen')和len("\n\t\r")的值都是多少？
+（5）"China" in "I love china"的值是True还是False?
+（6）"I love china".find("China")的值是多少？
+3．编程题
+（1）编写程序，给出一个英文句子，统计单词个数。
+（2）编写程序，给出一个字符串，将其中的字符"E"用空格替换后输出。
+（3）从键盘获取交互式输入的一个人的18位的身份证号，以类似于“2001年09月12日”的形式输出此人的出生日期。
+
+
+
+习  题  4
+1．选择题
+（1）下列选项中，不属于Python循环结构的是哪一项？（　　）
+A．for循环
+B．while循环
+C．do…while循环
+D．嵌套的while循环
+（2）以下代码段，运行结果正确的是哪一项？（　　）
+x=2
+y=2.0
+if x==y:
+    print("Equal")
+else:
+    print("Not Equal")
+A．Equal  
+B．Not Equal 
+C．运行异常    
+D．以上结果都不对
+（3）以下代码段，运行结果正确的是哪一项？（　　）
+x=2
+if x:
+    print(True)
+else:
+    print(False)
+A．True
+B．False   
+C．运行异常   
+D．以上结果都不对
+（4）关于下面代码的叙述，正确的是哪一项？（　　）
+x=0
+while x<10:
+    x+=1
+    print(x)
+    if x>3:
+         break
+A．代码编译异常 
+B．输出：0 1 2 
+C．输出：1 2 3
+D．输出：1 2 3 4
+（5）以下代码段，运行结果正确的是哪一项？（　　）
+for i in range(4):
+    if i==3:
+         break
+    print(i)
+print(i)
+A．0123    
+B．0122    
+C．123    
+D．234
+（6）以下代码段，运行结果正确的是哪一项？（　　）
+a=17
+b=6
+result=a%b if(a%b>4) else a/b 
+print(result)  
+A．0　　  
+B．1      
+C．2　 　
+D．5
+（7）以下代码段，运行结果正确的是哪一项？（　　）
+i = 3
+j = 0
+k=3.2
+if(i < k):
+    if( i== j):
+         print(i)
+    else:
+         print(j)
+else:
+    print(k)
+A．3    
+B．0    
+C．3.2    
+D．以上结果都不对
+
+（8）下列选项的功能是求两个数值x、y中的最大数，不正确的是哪一项？（　　）
+A．result=x if x>y else y
+B．result=max(x,y)
+C．if x>y:result=x
+
+D．if y>=x:result=y
+       else:result=y
+
+                result=x
+（9）在Python中，使用for…in方式形成的循环不能遍历的类型是哪一项？（　　）
+A．字典
+B．列表
+C．整数
+D．字符串
+（10）以下关于Python循环结构的描述中，错误的是哪一项？（　　）
+A．continue语句只结束本次循环
+B．遍历循环中的遍历结构可以是字符串、文件、组合数据类型和range()函数等
+C．Python使用for、while等保留字构建循环结构
+D．break语句用来结束当前当次语句，不跳出当前的循环体
+（11）以下关于“for <循环变量> in <循环结构>”的描述，不正确的是哪一项？（　　）
+A．上面的循环体中不能有break语句，会影响循环次数
+B．<循环结构>使用 [1,2,3]和 ['1','2','3']，循环次数是一样的
+C．使用range(a,b)函数指定for循环的循环变量取值是a到b−1
+D．for i in range(1,10,2)表示循环5次，i的值是从1到9的奇数
+（12）以下代码的运行结果是哪一项？（　　）
+s="北京,上海,广州,深圳,"
+print(s.strip(",").replace(",",";"))
+A．北京 上海 广州 深圳
+B．北京;上海;广州;深圳，
+C．北京;上海;广州;深圳； 
+D．北京;上海;广州;深圳
+2．简答题
+（1）程序流程图包括哪些元素？
+（2）pass语句的作用是什么？
+（3）跳转语句break和continue的区别是什么？
+（4）简述for循环和while循环的执行过程。
+3．阅读程序
+（1）下面程序的功能是什么？
+a,b=2,1
+sum=0
+for i in range(20):
+    sum+=a/b
+    t=a
+    a=a+b
+    b=t
+print(sum)
+（2）以下程序的输出结果是什么？ 
+for i in range(1,8):
+    if i%4==0:
+       break
+    else:
+       print(i,end=",")
+（3）下面程序的输出结果是什么？
+x="god"
+y=""
+for i in x:
+     y+=str(ord(i)-ord('a'))
+print(y)
+4．编程题
+（1）给定某一字符串s，对其中的每一字符c进行大小写转换：如果c是大写字母，则将它转换成小写字母；如果c是小写字母，则将它转换成大写字母；如果c不是字母，则不进行转换。
+（2）输入一个整数，将各位数字反转后输出。
+（3）计算12−22+32−42+…+972−982+992。
+（4）一个数如果恰好等于它的因子之和，这个数就称为“完数”。例如，6的因子为1、2、3，而6=1+2+3，因此6就是“完数”。请编程找出100内的所有完数。
+（5）输入两个正整数m和n，求其最大公约数和最小公倍数。
+提示：在循环中，用较大数（初始值为m、n中的较大数）除以较小的数（初始值为m、n中的较小数），然后将小的一个数作为下一轮循环中较大的数，较大数除以较小数所取得的余数作为下一轮循环的较小的数，如此循环直到较小的数的值为0时，返回较大的数，此数即为m和n的最大公约数。最小公倍数为两数之积除以最大公约数。
+（6）输入一元二次方程的3个系数a、b、c，求方程ax2+bx+c=0的根。
+
+
+习  题  5
+1．选择题
+（1）下列选项中，不属于字典操作的方法是哪一项？（　　）
+A．dicts.keys()
+B．dicts.pop()
+C．dicts.values()
+
+D．dicts.items()
+（2）Python语句print(type(['a','1',2,3])) 的输出结果是哪一项？（　　）
+A．<class 'list'>
+B．<class 'disc'>
+C．<class 'tuple'>
+
+D．<class 'set'>
+（3）Python语句print(type({'a','1',2,3})) 的输出结果是哪一项？（　　）
+A．<class 'list'>
+B．<class 'disc'>
+C．<class 'tuple'>
+
+D．<class 'set'>
+
+（4）Python语句 temp=['a','1',2,3,None,]; print(len(temp)) 的输出结果是哪一项？（　　）
+A．3
+B.4
+C．5
+D．6
+（5）Python语句temp=set([1,2,3,2,3,4,5]); print(len(temp)) 的输出结果是哪一项？（　　）
+A．7
+B．1
+C．4
+D．5
+（6）执行下面的操作后，lst的值是多少？（　　）
+lst1=[3,4,5,6]
+lst2=lst1
+lst1[2]=100
+print(lst2)
+A．[3, 4, 5, 6]
+B．[3, 4, 100, 6]
+C．[3, 100, 5, 6]
+D．[3, 4, 100,5 ,6]
+（7）下列选项中，正确定义了一个字典的是哪个选项？（　　）
+A．a=[a',1,b',2,'c,3]
+
+B．d=('a':1, 'b':2, 'c':3)  
+C．{a:1, b:2, c:3}
+
+D．d={'a':1, 'b':2, 'c':3}
+（8）下列选项中，不能使用索引运算的是哪一项？（　　）
+A．列表（list）
+B．元组（tuple）
+C．集合（set）
+D．字符串（str）
+（9）下列关于列表的说法中，错误的是哪一项？（　　）
+A．列表是一个有序集合，可以添加或删除元素
+B．列表可以存放任意类型的元素
+C．使用列表时，其下标可以是负数
+D．列表是不可变的数据结构
+（10）Python语句 s={'a',1,'b',2};print(s[b])的输出结果是哪一项？（　　）
+A．2
+B．1
+C．'b'
+D．语法错误
+（11）以下代码的输出结果是哪一项？（　　）
+d={"food":{"cake":1,"egg":5}}
+print(d.get("cake","no this food") )
+A．no this food
+B．egg
+C．1
+D．food
+（12）以下代码的输出结果是哪一项？（　　）
+s=[4,2,9,1]
+s.insert(2,3)
+print(s)
+A．[4, 2, 9, 2, 1]
+B．[4, 2, 3, 9, 1] 
+C．[4, 3, 2, 9, 1]
+D．[4, 2, 9, 1, 2, 3]
+（13）下列说法中，不正确的是哪一项？（　　）
+A．Python的str、tuple、list类型都属于序列类型
+B．组合数据类型可以分为3类：序列类型、集合类型和映射类型 
+C．组合数据类型能够将多个数据组织起来，通过单一的表示使数据操作更有序，更容易理解
+D．序列类型是二维元素向量，元素之间存在先后关系，通过序号访问
+（14）下列关于列表变量ls的方法的说法中，不正确的是哪一项？（　　）
+A．ls.append(x)：在列表ls最后增加一个元素x
+B．ls.clear()：删除列表ls中的最后一个元素
+C．ls.copy()：复制生成一个包括ls中所有元素的新列表
+D．ls.reverse()：反转列表ls中的元素
+2．简答题
+（1）列表、元组、字典都用什么标记或什么函数创建？
+（2）列表和元组两种序列结构有什么区别？
+（3）字典有什么特点？请列出任意5种字典的操作方法。
+（4）遍历列表和元组有哪几种方法？
+（5）给定列表变量ls，ls.pop(i)方法的功能是什么？
+（6）列表和元组相互转换的函数是什么？
+（7）给定字典变量dicts，dicts.items()方法的功能是什么？
+3．阅读程序
+（1）下面程序的输出结果是“found it! 44”，【代码】处应补充的语句是什么？
+ls=[12,33,44,55,66]
+for i in ls:
+     if i==44:
+           print("found it! i=",i)
+          【代码】
+     else:
+           continue
+（2）下面程序的输出结果是什么？
+x=[90,80,70]
+y=("Rose","Mike","John")
+z={}
+for i in range(len(x)):
+     z[x[i]]=y[i]
+print(z)
+（3）下面程序的功能是：输入以逗号分隔的一组单词，判断是否有重复的单词。如果存在重复的单词，打印“有重复单词”，退出；如果无重复的单词，打印“没有重复单词”。【代码】处应补充的语句是什么？
+txt=input("请输入一组单词，以逗号分隔：")
+ls=txt.split(',')
+words=[]
+for word in ls:
+     if word in words:
+           print("有重复单词")
+           break
+     else:
+           【代码】
+else:
+     print("没有重复单词")
+4．编程题
+（1）编写程序，随机生成由英文字符和数字组成的4位验证码。
+（2）使用字典描述学生信息，包括no（学号），name（姓名），score（成绩）等。使用列表存储学生的信息，并根据给定学生姓名查找学生的信息。
+（3）使用input函数，输入若干单词，然后按字典顺序输出单词（即使某个单词出现多次，也只输出一次）。
+（4）使用元组创建一个存储Python关键字的对象，并检测给定的单词是否是Python的关键字。
+（5）编写程序，删除列表中的重复元素。
+
+
+习  题  6
+1．选择题
+（1）可以用来创建 Python自定义函数的关键字是哪一项？（　　）
+A．function      
+B．def
+C．class
+D．return
+（2）关于Python函数参数的描述中，不正确的是哪一项？（　　）
+A．Python实行按值传递参数，值传递是指调用函数时将常量或变量的值传递给函数的参数
+B．实参与形参分别存储在各自的内存空间中，是两个不相关的独立变量
+C．在函数内部改变形参的值时，实参的值一般是不会改变的
+D．实参与形参的名字必须相同
+（3）下列哪一项不属于函数的参数类型？（　　）
+A．位置参数 
+B．默认参数
+C．可变参数 
+D．地址参数
+（4）Python语句print(type(lambda:None))的运行结果是哪一项？（　　）
+A．<class 'NoneType'>
+B．<class 'function'>
+
+C．<class tuple'>
+
+D．<class 'type'>
+（5）Python语句f=lambda x,y:x*y; f(2,6)的运行结果是哪一项？（　　）
+A．2     
+B．6     
+C．12     
+D．8
+（6）下列程序的运行结果是哪一项？（　　）
+s="hello"
+def setstr():
+    s="hi"
+    s+="world"
+setstr()
+print(s)
+A．hi
+B．hello
+C．hiworld
+D．helloworld
+（7）下列程序的运行结果是哪一项？（　　）
+def fun1():
+    '''Test Function'''
+    pass
+print(fun1.__doc__)
+A．None
+B．pass
+C．Test Function
+D．False
+（8）下列哪个函数不属于序列操作函数？（　　）
+A．map()
+B．reduce()
+C．filter()
+D．lambda
+（9）以下的函数定义中，不正确的是哪一项？（　　）
+A．def vfunc(a,b=2):
+B．def vfunc(a,b):
+C．def vfunc(a,*b):
+
+D．def vfunc(*a,b):
+（10）运行以下程序，输出结果是哪一项？（　　）
+def calu(x=3,y=2):
+    return(x*y)
+
+a='abc'
+b=2
+print(calu(a,b),end=",")
+A．abcabc, 
+B．abcabc 
+C．6
+D．abcabc,6
+（11）运行以下程序，输入fish520，输出结果是哪一项？（　　）
+w=input()
+for x in w:
+    if '0'<=x<='9':
+        continue
+    else:
+        w.replace(x,"")
+print(w)
+A．fish520
+B．fish
+C．520
+D．520fish
+（12）运行以下程序，输出结果是哪一项？（　　）
+def loc_glo(b=2,a=4):
+    global z
+    z+=3*a+5*b
+    return z
+z=10
+print(z,loc_glo(4,2))
+A．1036
+B．3232
+C．3636
+D．1032
+2．简答题
+（1）什么是函数的嵌套定义？请举例说明。
+（2）函数的可变参数有哪几种？各有什么特点？
+（3）函数传递时，用基本数据类型和组合数据类型作参数，有什么区别？请举例说明。
+（4）在内置函数中，列出5种常用的数学运算函数和字符运算函数。
+（5）global语句的功能是什么？
+（6）什么是默认参数？
+3．阅读程序
+（1）以下程序的运行结果是什么？
+arr1=[12,34,56]
+arr2=[1,2,3,4]
+def disp(p):
+    print(p)
+
+arr1=arr2
+arr1.append([5,6])
+disp(arr2)
+disp(arr1)
+（2）以下程序的运行结果是什么？
+def func(a,b):
+    c=a**2+b
+    b=a
+    return c
+
+a=10
+b=100
+c=func(a,b)+a
+print(a,b,c)
+（3）下面的程序用于模拟Python内置函数sorted()的功能。在函数sorting(ls)中，参数ls是一个包含若干数值的列表，函数的返回值为排序后的列表，但实参ls不发生变化。完善程序，在【代码1】和【代码2】处补充合适的内容。
+def sorting(ls):
+    m=ls.copy()
+    r=[]
+    for i in 【代码1】:
+        t=min(m)
+        r.append(t)
+        【代码2】
+    return r
+#主程序
+ls=[11,2,34,41,25]
+print("排序后的结果：",sorting(ls))
+print("原列表不变：",ls)
+4．编程题
+（1）编写函数isodd(x)，如果x不是整数，给出提示后退出程序；如果x为奇数，返回True；如果x为偶数，返回False。
+（2）编写函数change(str1)，其功能是对参数str1进行大小写转换，将大写字母转换成小写字母；小写字母转换成大写字母；非英文字符不转换。
+（3）编写并测试函数gcd(m, n)和lcm(m, n)，其功能是求两个整数m、n的最大公约数和最小公倍数。
+（4）编写并测试函数reverse(x)，输入一个整数，并将各位数字反转后输出。
+（5）用递归方法反转一个字符串，如“abcde”反转为“edcba”。
+（6）编写程序求12 − 22 + 32 − 42 + … + 972 − 982 + 992。
+
+
+
+习  题  7
+1．选择题
+（1）Python中，用来描述一类相同或相似事物的共同属性的是哪一项？（　　）
+A．类    
+B．对象
+C．方法
+D．数据区
+（2）下面哪个选项是正确的？（　　）
+A．一个类中如果没有定义构造方法，那么系统就会提供一个默认构造方法
+B．类中至少定义一个构造方法
+C．每个类中总有一个默认构造方法
+D．Python中的构造方法名与类名是相同的
+（3）关于类和对象的关系，描述正确的是哪一项？（　　）
+A．类是面向对象的基础
+B．类是现实世界中事物的描述
+C．对象是根据类创建的，并且一个类只能对应一个对象
+D．对象是类的实例，是具体的事物
+（4）构造方法的作用是哪一项？（　　）
+A．显示对象初始信息
+B．初始化类
+C．初始化对象
+
+D．引用对象
+（5）Python中定义私有属性的方法是哪一项？（　　）
+A．使用 private关键字
+B．使用public关键字
+C．使用__XX__定义属性名
+D．使用__XX定义属性名
+（6）不属于面向对象程序设计的特征的是哪一项？（　　）
+A．重写
+B．封装
+C．继承
+D．多态
+（7）在以下C类继承A类和B类的格式中，正确的是哪一项？（　　）
+A．class C extends A, B:
+B．class C(A: B): 
+C．class C(A, B):
+
+D．class C implements A, B: 
+（8）下列选项中，用于标识为静态方法的是哪一项？（　　）
+A．@classmethod
+
+B．@staticmethod
+C．@instancemethod
+D．@privatemethod
+（9）关于下面程序的说法中，不正确的是哪一项？（　　）
+class Hello:
+    def __init__(self,id,color="yellow"):
+           self.id=id
+           self.color=color
+
+     def Hello(self,weight):
+           return 20+weight
+#主程序
+h=Hello(100)
+print(h.color)
+A．构造方法是__init__(self,id,color="yellow")
+B．Hello(self,weight) 是成员方法
+C．代码h=Hello(100)无法通过编译
+D．print(h.color)语句的输出结果是yellow
+（10）关于下面程序的方法中，正确的是哪一项？（　　）
+class Hello:
+    def __init__(self,id,color="yellow"):
+           self.id=id
+           self.color=color
+    
+     def test(self,weight):
+           return 20+weight
+
+     def test(self):
+           return 20
+#主控程序
+h=Hello("3")
+print(h.test(100))
+A．test(self,weight)和test(self)两个重载的方法，会根据方法的参数不同，执行不同的方法
+B．成员方法test(self,weight)方法中的self参数可以省略
+C．代码print(h.test(100))将输出120
+D．代码h=Hello("3")在创建对象时被执行
+2．简答题
+（1）什么是对象？什么是类？类与对象的关系是什么？
+（2）面向对象语言有哪三个特性？
+（3）什么是面向对象编程的继承性？有什么优点？
+（4）类变量与成员变量的区别是什么？
+（5）构造方法和析构方法名字都是什么？
+（6）构造方法的作用是什么？它与成员方法有什么不同？
+（7）请列举出5种重载的运算符及其对应的方法。
+3．阅读程序
+运行下面的程序，输出结果是什么？说明程序的执行过程。
+ class MyClass:
+      value = 100         #类属性
+      def function1(self):
+            print("self.value=",self.value);
+            print("MyClass.value=", MyClass.value)
+ 
+ class UClass(MyClass):
+      value=200            #类属性
+      def function1(self):
+            super().function1()
+            print("super().value=",super().value)
+            print("self.value=",self.value)
+            print("UClass.value=", UClass.value)
+ 
+ # 主控程序
+ cc = UClass()
+ cc.function1()
+ print("用对象访问，cc.value=",cc.value)
+ print("用类访问，UClass.value=",UClass.value)
+4．编程题
+（1）设计一个Group类，该类包括：一个数据成员score（每个学生的分数）、两个类成员total（班级的总分）和count（班级的人数）。成员方法setScore()用于设置分数，成员方法sum()用于累计总分，类方法average()用于求平均值。交互式输入某组学生的成绩，显示该组的总分和平均分。
+（2）为二次方程式ax2+bx+c=0设计一个名为Equation的类，这个类包括：
+·
+代表3个系数的成员变量a、b、c；
+·
+一个参数为a、b、c的构造方法；
+·
+一个名为getDiscriminant()的方法返回判别式的值；
+·
+一个名为 getRoot1()和 getRoot2()的方法返回等式的两个根，如果判别式为负，这些方法返回0。
+（3）设计一个描述自由落体运动的类，要求能获得任意时刻的速度及位移，并进行测试。已知重力加速度为9.8m/s2。
+
+
+习  题  8
+1．选择题
+（1）下列导入模块的语句中，不正确的是哪一项？（　　）
+A．import numpy as np
+B．from numpy import * as np
+C．from numpy import *
+D．import matplotlib.pyplot
+（2）下列关于包的说明中，不正确的是哪一项？（　　）
+A．包的外层目录必须包含在Python的搜索路径中
+B．包的所有下级子目录都需要包含一个__init__.py文件
+C．包由模块、类和函数等组成
+D．包的扩展名是.py
+（3）下列哪个是Python的标准库？（　　）
+A．turtle
+B．jieba
+C．PIL
+D．pyintaller
+（4）下列选项中，哪一个不是pip命令的参数？（　　）
+A．list
+B．show 
+C．install
+D．change
+（5）模块文件m1.py如下。
+#模块文件：m1.py
+x=1
+def testm():
+    print("This is a test,in function testm()")
+type(x)
+print("module output test1")
+print("module output test2")
+if __name__=="__main__":
+    testm()
+在IDLE交互模式下，执行import m1语句后的结果是哪一项？（　　）
+A．1/module output test1/module output test2
+B．<class 'int'>/module output test1/module output test2
+C．module output test1/module output test2
+D．This is a test,in function testm()/module output test1/module output test2
+（6）在Python语言中，能够处理图像的第三方库是哪一项？（　　）
+A．PIL
+B．pyserial
+C．requests
+D．pyinstaller
+（7）在Python语言中，用于数据分析的第三方库是哪一项？（　　）
+A．Django
+B．flask
+C．pandas
+D．PIL
+（8）在Python语言中，不属于图形用户界面开发的第三方库是哪一项？（　　）
+A．wxpython
+B．PyQt5
+C．turtle
+D．pygtk
+（9）以下关于turtle库的描述，不正确的是哪一项？（　　）
+A．seth(x)是setheading(x)方法的别名，让画笔旋转x角度
+B．home()方法设置当前画笔位置到原点，方向朝上
+C．可以使用import turtle语句导入 turtle库
+D．在导入 turtle库之后，可以用turtle.circle()语句画一个圆
+（10）turtle画图结束后，让画面停顿，不立即关掉窗口的方法是哪一项？（　　）
+A．turtle.clear()
+B．turtle.setup()
+C．turtle.penup()
+
+D．turtle.done()
+2．简答题
+（1）Python导入模块时一般采用什么搜索顺序？
+（2）Python的内置属性__name__有什么作用？
+（3）Python的第三方库如何安装？如何查看当前计算机中已经安装的第三方库？
+（4）简述用Python的第三方库pyinstaller打包文件的过程和注意事项。
+（5）模块和包有什么区别？它们之间的关系是什么？
+（6）举例说明random库中5种函数的功能。
+（7）turtle.setup()方法的功能是什么？
+（8）使用jieba库的什么方法可以实现精确分词，并返回一个列表？
+3．阅读程序
+（1）使用turtle库的turtle.fd()方法和turtle.seth()方法绘制一个边长为100像素的正八边形，如图8-14所示。完善程序，补充【代码1】和【代码2】处的内容。
+import turtle
+turtle.pensize(2)
+d = 0
+for i in range(1, 【代码1】):
+    turtle.fd(100)
+    d += 【代码2】
+    turtle.seth(d)
+（2）使用turtle库的turtle.fd()方法和turtle.seth()方法绘制一个每方向边长为100像素的十字形，如图8-15所示。完善程序，补充【代码1】和【代码2】处的内容。
+import turtle
+for i in range(4):
+    turtle.fd(100)
+    【代码1】(-100)
+    【代码2】((i+1)*90)
+                       
+                 图8-14　正八边形                          图8-15　十字形
+4．编程题
+（1）使用random库，产生10个100～200的随机数，并求其最大值、平均值、标准差和中位数。
+（2）使用datetime库，对某一个日期（含时间）数据，输出不少于8种日期格式。
+（3）使用turtle库绘制一个叠加三角形（效果见图8-16）。
+ 
+图8-16  叠加三角形的效果
+（4）编写程序统计《水浒传》中出场最多的前10位人物。
+
+
+习  题  9
+1．选择题
+（1）当文件不存在时，下列哪种模式在使用open()方法打开文件时会报异常？（　　）
+A．'r'
+B．'a'
+C．'w'
+D．'w+'
+（2）file是文本文件对象，下列选项中，哪一项用于读取文件的一行？（　　）
+A．file.read()
+B．file.readline(80)
+C．file.readlines()
+D．file.readline()
+（3）下列方法中，用于获取文件当前目录的是哪一个选项？（　　）
+A．os.mkdir()
+B．os.listdir()
+C．os.getcwd()
+D．os.mkdir(path)
+（4）下列代码可以成功执行，则myfile.data文件的保存目录是哪一个选项？（　　）
+open("myfile.data","ab")
+A．C盘根目录下
+
+B．由path路径指明
+C．Python安装目录下
+D．与程序文件在相同的目录下
+（5）下列说法中，不正确的是哪一项？（　　）
+A．以'w'模式打开一个可读/写的文件，如果文件存在会被覆盖
+B．使用write()方法写入文件时，数据会追加到文件的末尾
+C．使用read()方法可以一次性读取文件中的所有数据
+D．使用readlines()方法可以一次性读取文件中的所有数据
+（6）执行下列语句后，文件1.dat中的内容是哪一项？（　　）
+fo=open("1.dat",'w')
+x=["open",' ',"read",'' ,"write"]
+fo.write("".join(x))
+fo.close()
+A．["open",' ',"read",'' ,"write"]
+B．open read write
+C．"open" "read" "write"
+D．open,read,write 
+（7）在读写CSV文件时，最不可能使用的字符串处理方法是哪一项？（　　）
+A．join()
+B．index()
+C．strip()
+D．split()
+（8）给出如下代码，以下哪一项是不正确的选项？（    ）
+name = input("请输入要打开的文件: ")
+fi = open(name)
+for line in fi.readlines():
+     print(line)
+fi.close()
+A．fi.readlines()的内容是一个序列，可以使用type(fi.readlines())查看其类型
+B．用户输入文件名称，以文本文件方式读入文件的内容并逐行输出
+C．通过fi.readlines()方法将文件的全部内容读入一个字典fi中
+D．代码for line in fi.readlines()可以写为for line in fi
+（9）使用open()函数打开Windows操作系统的文件，路径名不正确的是哪一项？（　　）
+A．open(r"d:\Python\a.txt",'w')
+B．open("d:\Python\a.txt",'w')
+C．open("d:/Python/a.txt",'w')
+D．open("d:\\Python\\a.txt",'w')
+（10）文件exam.txt与下面的程序在同一目录，其内容是一段文本：Learning Python，以下最可能的输出结果是哪一项？（　　）
+fo=open("exam.txt")
+print(fo)
+fo.close()
+A．Learning Python
+B．exam.txt
+C．exam
+
+D．<_io.TextIOWrapper …>
+2．简答题
+（1）常用的文本文件的编码方式有哪几种？汉字在不同的编码方式中各占几个字节？
+（2）请列出任意4种文件访问模式，并说明其含义。
+（3）文本文件和二进制文件在读/写时有什么区别？请举例说明。
+（4）使用readlines()方法和readline()方法读取文本文件时，主要的区别是什么？
+（5）文件写操作主要使用哪两个方法？
+（6）os模块的getcwd()函数有什么用途？
+（7）如何创建csv文件？
+（8）高维数据有什么特点？
+3．阅读程序
+（1）下面程序的功能是将文件thispro.py删除指定单词后，再复制到文件f2.txt中。完善程序，在【代码1】【代码2】处补充合适的内容。
+fi=open("thispro.py",'r')
+fo=open("f2.txt",'w')
+deleteword=input("请输入要删除的单词：")
+for line in fi:
+     line1=【代码1】
+    【代码2】
+fi.close()
+fo.close()
+（2）给出一文本文件vote.txt，内容是校园歌手投票数据，如下所示。一行只有一个校园歌手姓名的投票才是有效票；一行有多个校园歌手姓名时，姓名之间用空格分隔，均为无效选票。下面的程序用于统计有效票数，请在【代码1】【代码2】处补充合适的内容。
+文本文件vote.txt内容如下。
+杨雨
+朱丽
+陆寒
+陆寒
+陆寒  孙妮
+杨雨
+孙妮
+朱丽
+孙妮 杨雨
+……
+程序代码如下。
+f = open("vote.txt")
+names = f.readlines()
+f.close()
+n = 0
+for name in 【代码1】:
+    num =【代码2】
+    if num==1:
+       n+=1
+print("有效票{}张".format(n))
+（3）下面的程序运行时，要求通过键盘输入某班每个同学就业的行业名称，行业名称之间用空格间隔（回车结束输入）。程序的功能是统计各行业就业的学生数量，按数量从高到低排序输出。
+例如，输入内容如下。
+交通 计算机  通信 计算机 网络 网络 交通 计算机
+输出内容如下。
+计算机：3
+网络：2
+交通：2
+通信：1
+完善程序，请在【代码1】【代码2】处补充合适的内容。
+names=input("请输入就业行业名称，用空格间隔（回车结束输入）：")
+t=names.split()
+d = {}
+for c in range(len(t)):
+    d[t[c]]= 【代码1】
+ls = list(d.items())
+ls.sort(【代码2】)         # 按照数量排序
+for k in range(len(ls)):
+     zy,num=ls[k]
+     print("{}:{}".format(zy,num))
+4．编程题
+（1）将一个文件中的所有英文字母转换成大写，复制到另一个文件中。
+（2）将一个文件中的指定单词删除后，复制到另一个文件中。
+（3）接收用户从键盘输入的一个文件名，然后判断该文件是否存在于当前目录。若存在，则输出以下信息：文件是否可读和可写、文件的大小、文件是普通文件还是目录。
+（4）将一文本文件加密后输出，规则如下：大写英文字符A变换为C，B变换为D，……，Y变换为A，Z变换为B，小写英文字符规则同上，其他字符不变。
+
+
+
+
+习  题  10
+1．选择题
+（1）下列关于异常处理的描述中，不正确的是哪一项？（　　）
+A．程序运行产生的异常由用户或者Python解释器进行处理
+B．使用try…except语句捕获异常
+C．使用raise语句抛出异常
+D．捕获到的异常只能在当前方法中处理，而不能在其他方法中处理
+（2）下列关于try…except…finally语句的描述中，正确的是哪一项？（　　）
+A．try语句后面的程序段将给出处理异常的语句
+B．except语句在try语句的后面，该语句可以不接异常名称
+C．except语句后的异常名称与异常类的含义是相同的
+D．finally语句后面的代码段不一定总是被执行的，如果抛出异常，该代码不执行
+（3）下列关于创建用户自定义异常的描述中，不正确的是哪一项？（　　）
+A．用户自定义异常需要继承Exception类或其他异常类
+B．在方法中声明抛出异常 关键字是throw语句
+C．捕捉异常的方法是使用try…except…else…finaIly语句
+D．使用异常处理会使整个系统更加安全和稳健
+（4）给定以下代码：
+def problem():
+    raise NameError
+
+def method1():
+    try:
+        print("a")
+        problem()
+    except NameError:
+        print("b")
+    except Exception:
+        print("c")
+    finally:
+        print("d")
+    print("e")
+
+method1()
+当执行method1 ()方法后，输出结果是哪一项？（　　）
+A．acd
+B．abd
+C．abde
+D．a
+（5）下列选项中，不在运行时发生的异常是哪一项？（　　）
+A．ZerodivisionError
+B．NameError
+C．SyntaxError
+
+D．KeyError
+（6）当try语句块中没有任何错误信息时，一定不会执行的语句是哪一项？（　　）
+A．try
+B．else
+C．finally
+D．except
+（7）如果Python程序中试图打开不存在的文件，解释器将在运行时抛出哪类异常？（　　）
+A．NameError 
+
+B．FileNotFoundError
+C．SyntaxError 
+
+D．ZeroDivisionError
+（8）Python程序中，假设有表达式123＋xyz，则解释器将抛出哪类异常？（　　）
+A．NameError 
+
+B．FileNotFoundError
+C．SyntaxError 
+
+D．TypeError
+（9）Python程序中，假设列表s=[1,23,2]，如果语句中使用s[3]，则解释器将抛出哪类异常？（　　）
+A．NameError 
+B．IndexError
+C．SyntaxError 
+D．ZeroDivisionError
+（10）Python程序中，假设字典d={'1':'male','2':'female'}，如果语句中使用d[3]，则解释器将抛出哪类异常？（　　）
+A．NameError 
+B．IndexError
+C．SyntaxError 
+D．KeyError
+2．简答题
+（1）什么是异常？简述Python的异常处理机制。
+（2）除书中列出的7种常见异常外，查Python文档，请列举3种其他的内置异常类。
+（3）如何创建用户自定义异常？
+（4）异常处理结构中的else语句有什么作用？
+（5）使用哪个Python语句可以显式地抛出异常？
+（6）断言语句的格式是：assert<boolCondition>,[description]，当boolCondition的值为True时，将触发异常。这种说法正确吗？
+
+3．阅读程序
+（1）已知学生类Student及年龄异常类AgeException如下，分析程序的执行结果。
+class AgeException(Exception):
+    def __init__(self,description):
+         self.description=description
+
+class Students:
+    def __init__(self,strname,age):
+         self.strname=strname
+         self.age=age
+         if (age<0 or age>200):
+             raise AgeException("年龄错误")
+         else:
+             print(age)
+try:
+    s1 = Students("zh3",19)
+    s2 = Students("Lisi",-20)
+except AgeException as e:
+    print(e.description)
+（2）阅读如下程序, 如果在当前文件夹中找不到文本文件test.txt, 输出结果是什么？
+try:
+     myfile=open("test.txt")
+     print("success")
+except FileNotFoundError:
+     print("Location 1")
+finally:
+     print("Location 2")
+print("Location 4")
+4．编程题
+（1）编程实现索引超出范围异常（异常类型为IndexError）。异常场景示例如下。
+chars = ['a','b',100,-37,2] 
+chars[5] = ＇k＇     ＃产生IndexError异常
+（2）设计一个描述一元二次方程的类，并为这个类添加异常处理。
+（3）定义一个Circle类，其中有求面积的方法，当半径小于0时，抛出一个用户自定义异常。
+（4）从键盘输入一个整数，求100除以它的商，并显示输出。要求对从键盘输入的数值进行异常处理。
+
+
+习  题  11
+1．选择题
+（1）在tkinter的布局管理的方法中，可以精确定义组件位置的方法是哪一项？（　　）
+A．place()
+B．grid()
+C．frame()
+D．pack()
+（2）可以接收单行文本输入的组件是哪一项？（　　）
+A．Text
+B．Label
+C．Entry
+D．Listbox
+（3）哪种方式最有可能在容器底端依次摆放3个组件？（　　）
+A．用grid()方法设计布局管理器
+B．用pack()方法设计布局管理器
+C．用place()方法设计布局管理器
+D．结合grid()方法和pack()方法设计布局管理器
+（4）以下关于设置窗口属性的方法中，哪项是不正确的？（　　）
+A．title() 
+B．config() 
+C．geometry() 
+D．mainloop()
+（5）下列组件中，可以用于处理多行文本的选项是哪一项？（    ）
+A．Label    
+B．Text
+C．Entry 
+D．Menu
+（6）下面关于tkinter组件背景颜色属性bg的描述中，r、g、b均为十六进制整数，不正确的选项是哪一项？（    ）
+A．bg= '#rgb '
+
+B．bg= '#rrggbb '
+C．bg= 'blue '(颜色名称)
+D．bg= 'rgb '
+（7）下面关于Python不同类型文件扩展名的描述，错误的是哪一项？（    ）
+A．.py
+B．.pyw
+C．.pyc
+D．.pbj
+（8）使用bind()方法来为按钮组件button1绑定事件处理函数，代码如下。
+button1.bind("<Button-1>",leftkey)
+下列选项中，不正确的是哪一项？（    ）
+A．button1是事件源
+B．leftkey是事件处理程序
+C．bind是事件处理函数
+D．<Button-1>是事件或事件名称
+2．简答题
+（1）窗口对象的mainloop()方法有什么作用？
+（2）使用pack()方法的布局有什么特点？
+（3）使用grid()方法的布局有什么特点？
+（4）Frame组件可以用于布局，主要作用是什么？
+（5）请列举出6种以上Label组件的属性。
+（6）Radiobutton组件和Checkbutton组件的区别是什么？
+（7）Python的GUI编程中，组件和容器的概念有什么区别？
+3．阅读程序
+下面程序的功能是：在图形用户界面的输入框中，输入数值N，单击“输出N的4次方”按钮，计算并在命令行输出结果。请在【代码1】【代码2】处补充合适的内容。
+from tkinter import *
+def computing():  
+    str1=number.get()
+    print(int(str1)**4)
+    
+win=Tk()
+win.title("Entry Test")
+win.geometry("300x200")
+label1=Label(win,text='Please ENter N: ')
+label1.config(width=20,height=5)
+label1.pack()
+number = StringVar()
+entry1 = Entry(【代码1】)
+entry1.pack()
+button1=Button(win,text="输出N的4次方")
+
+button1.config(【代码2】)
+button1.pack()
+win.mainloop()
+4．编程题
+（1）编写求两个正整数的最小公倍数的图形用户界面程序。元素要求：两个输入框txt1、txt2用于输入整型数据；一个按钮；一个不可编辑的输入组件txt3。当单击按钮时，在txt3中显示两个整数的最小公倍数的值。
+（2）设计GUI程序，模拟QQ登录界面，输入用户名和密码。如果输入正确，提示登录成功；如果输入错误，提示登录失败。
+（3）例11-17中使用了Button组件的command参数实现事件处理，请用bind()方法实现事件处理。
+
+
+习  题  12
+1．选择题
+（1）在SQL中，实现分组查询的短语是哪一项？（　　）
+A．order by   
+B．group by 
+C．having   
+D．asc
+（2）下列关于SQL语句中的短语的说法中，正确的是哪一项？（　　）
+A．必须是大写的字母   
+B．必须是小写的字母
+C．大小写字母均可     
+D．大小写字母不能混合使用
+（3）“delete from s where 年龄>60”语句的功能是什么？（　　）
+A．从s表中删除年龄大于60岁的记录
+B．从s表中删除年龄大于60岁的首条记录
+C．删除s表
+D．删除s表的年龄列
+（4）“update student set年龄=年龄+1”语句的功能是什么？（　　）
+A．将student表中的所有学生的年龄变为1岁
+B．给student表中的所有学生的年龄增加1岁
+C．给student表中当前记录的学生的年龄增加1岁
+D．将student表中当前记录的学生的年龄变为1岁
+（5）在Python中连接SQLite的test数据库，正确的代码是哪一项？（　　）
+A．conn= sqlite3.connect("e:\db\test")
+B．conn= sqlite3.connect("e:/db/test")
+C．conn= sqlite3.Connect("e:\db\test")
+D．conn= sqlite3.Connect("e:/db/test")
+（6）关于SQLite3的数据类型的说法中，不正确的是哪一项？（　　）
+A．在SQLite3数据库中，表的主键应为integer类型
+B．SQLite3的动态数据类型与其他数据库使用的静态类型是不兼容的
+C．SQLite3的表完全可以不声明列的类型
+D．SQLite3的动态的数据类型是指根据列值自动判断列的数据类型
+（7）已知Cursor对象cur，使用Cursor对象的execute()方法可返回结果集，下列命令中不正确的是哪一项？（　　）
+A．cur.execute()
+
+B．cur.executeQuery()
+C．cur.executemany()
+D．cur.executescript()
+（8）下列选项中，不属于Connect对象conn的方法是（    ）。
+A．conn.commit()
+B．conn.close()
+C．conn.execute() 
+D．conn.open()
+2．简答题
+（1）数据库可以分为关系型数据库和非关系型数据库，什么是关系？
+（2）在Python中，在不安装SQLite数据库的情况下，可以直接访问SQLite数据库吗？
+（3）在SQLite3的命令窗口中，操作SQLite数据库的常用命令有哪些？
+（4）在Python中，访问SQLite数据库主要使用哪些对象，其功能是什么？
+（5）请列举出SQLite数据库中支持的5种数据类型？SQLite数据库的动态数据类型有什么特点？
+（6）游标对象的fetchone()、fetchall()、fetchmany()系列方法有什么区别？
+3．阅读程序
+下面程序的功能是连接数据库并输出连接对象，在【代码1】【代码2】处补充合适的内容。
+# 连接数据库的通用函数
+def getConn():
+    dbstr="d:/sqlite/test.db"
+    conn=【代码1】
+    cur=conn.cursor()
+    sqlstr="create table if not exists order1(order_id integer primary key,price float)"
+    cur=【代码2】
+    return conn
+# 调用函数getConn()
+print(getConn)
+4．编程题
+（1）基于12.3.1小节创建的test.db数据库和employee表，完成下列SQL命令，表中初始数据如下。
+[1132，李四，男，部门经理，7548.6，11；
+1443，王五，男，职员，6656，14；
+1036，高七，女，经理，7600，10]
+① 使用insert into命令向表中任意插入两条记录。
+② 使用delete from命令删除emp_id为1443的雇员记录。
+③ 使用update命令为职称为部门经理的雇员工资增加10%。
+④ 查询工资大于7000的部门经理的信息。
+⑤ 查询不同性别的雇员的人数。
+⑥ 查询employee表中工资在7000元以上的雇员信息，并将查询的结果按工资降序排序。
+⑦ 查询employee表中男女雇员人数及平均工资（显示：性别、人数、平均工资）。 
+（2）设计GUI界面，模拟用户登录系统。用户输入用户名和密码，如果正确，提示登录成功；否则提示登录失败（用户的密码信息保存在SQLite数据库中）。
+（3）在SQLite数据库管理系统中创建数据库library，在library数据库中建立图书表books（书号bookno，书名bookname，出版社publish，价格price）。建立一个简单的图书管理系统，实现图书信息的增加、删除、修改、条件查询等功能。
+
+
+习  题  13
+1．选择题
+（1）在代码import matplotlib.pyplot as plt中，plt的含义是什么？（　　）
+A．函数名
+B．类名
+C．库的别名
+D．变量名
+（2）阅读下面的代码，其中show()函数的作用是什么？（　　）
+import matplotlib.pyplot as plt
+plt.plot([9, 7, 15, 2, 9])
+plt.show()
+A．显示绘制的数据图
+B．刷新绘制的数据图
+C．缓存绘制的数据图
+D．存储绘制的数据图
+（3）以下哪个选项不是matplotlib.pyplot的绘图函数？（　　）
+A．hist()
+B．bar()
+C．pie()
+D．curve()
+（4）以下哪个选项不能生成一个ndarray对象？（　　）
+A．arr1 = np.array([0, 1, 2, 3, 4])
+B．arr2 = np.array({0:0,1:1,2:2,3:3,4:4})
+C．arr3 = np.array((0, 1, 2, 3, 4)
+D．arr4 = np.array(0, 1, 2, 3, 4)
+（5）下面代码中，savefig ()函数的作用是什么？（　　）
+import matplotlib.pyplot as plt
+plt.plot([9, 7, 15, 2, 9])
+plt.savefig('test', dpi=600)
+A．将数据图存储为文件 
+B．显示所绘制的数据图
+C．记录并存储数据
+D．刷新数据
+（6）下面代码运行后，数组arr的值是哪一项？（　　）
+>>> import numpy as np
+>>> arr1=np.array([2,3,4])
+>>> arr2=np.array([[1,1,1],[2,2,2],[3,3,3],[4,4,4]])
+>>> arr=arr1*arr2
+A．array([[ 2,4,6 ,8], [ 3,6,9,12],[ 4,8,12,16]])
+B．array([[ 2,2,2], [ 6,6,6],[ 12,12,12], [4,4,4]])
+C．array( [[ 2,3,4], [ 4,6,8],[ 6,9,12], [ 8,12,16]]
+D．两个数组的行数不同，不能运算
+（7）下面代码的运行结果是哪一项？（　　）
+>>> import numpy as np
+>>> arr1=np.array([[2,3,4],[1,2,3],[3,4,5]])
+>>> np.transpose(arr1)
+>>> arr1.T
+A．array([[2,1,3], [3,2,4] ,[4,3,5]])
+B．array([[2,3,4],[1,2,3],[3,4,5]])
+array( [[2,1,3], [3,2,4],[4,3,5]])        array([[2,3,4],[1,2,3],[3,4,5]])
+C．array([[2,1,3], [3,2,4] ,[4,3,5]])
+D．array([[2,1,3], [3,2,4] ,[4,3,5]])
+array([[2,3,4],[1,2,3],[3,4,5]])         array( [2,1,3,3,2,4, 4,3,5])
+（8）下面代码的运行结果是哪一项？（　　） 
+>>> arr=np.arange(-1,-10,-2) 
+>>> arr[::-1]
+A．array([-9, -7, -5, -3, -1])
+B．array([-1, -3, -5, -7, -9])
+C．array([-2, -4, -6, -8, -10])
+D．array([-10, -8, -6, -4, -2])
+2．简答题
+（1）numpy数组有什么特点？
+（2）使用numpy库创建数组有哪几种方法？
+（3）用于numpy数组形状操作的有哪些函数，请通过示例说明。
+（4）使用import matplotlib.pyplot asplt导入模块后，绘图的语句是plt.plot(x,y,"g-", linewidth=2.0)，plot()函数中各参数的含义是什么？
+（5）简述使用matplotlib.pyplot模块绘图的过程。
+3．阅读程序
+下面的程序的功能是绘制正弦三角函数y=sin(x)和余弦三角函数y=cos(x)的图形，如图13-8所示。请在【代码1】【代码2】处补充合适的内容。
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.rcParams['font.family']='SimHei'  #指定默认字体
+matplotlib.rcParams['font.sans-serif']='SimHei'
+plt.rcParams['axes.unicode_minus']=False      #用来正常显示负值
+x=【代码1】
+y1=np.sin(x)
+y2=np.cos(x)
+plt.xlabel("x-变量")
+plt.ylabel("y-变量")
+plt.title("函数图像")
+plt.【代码2】
+plt.show()
+4．编程题
+（1）请编写程序，绘制余弦三角函数y=cos(2x) 的函数曲线。
+（2）请编写程序，绘制y=e-xsint(2πx)和y=sin(2πx)的函数曲线，如图13-9所示。
+                           
+            图13-8  程序运行效果              图13-9  y=e-xsint(2πx)和y=sin(2πx)的函数曲线
+（3）参考本章示例，绘制一个散点图。
+
+ 
+可使用import matplotlib.pyplot as plt和help(plt.scatter)查看绘制散点图的帮助信息。
+
+
+习  题  14
+1．选择题
+（1）下列选项中，不属于HTML标签的是哪一项？（　　）
+A．<p>
+B．<a>
+C．<div> 
+D．<class>
+（2）urllib.request.urlopen()函数的返回值类型是哪一项？（　　）
+A．String
+B．text
+C．Response
+D．Request
+（3）以下哪个选项不是Python的Web应用框架？（　　）
+A．Flask
+B．Django
+C．Tornado
+D．urllib
+（4）bs4库的对象可以归纳为4种类型，不正确的是哪一项？（　　）
+A．Comment
+B．Tag
+C．String
+D．NavigableString
+（5）第三方库beautifulsoup4的功能是哪一项？（　　）
+A．解析和处理HTML和XML
+B．支持Web应用程序框架
+C．支持Webservices框架
+D．处理HTTP请求
+（6）以下不属于网络爬虫领域的第三方库是哪一项？（　　）
+A．Scrapy
+B．SnowNLP
+C．Requests
+D．PySpider
+（7）下面是解析网页的一段代码，其中，soup是一个BeautifulSoup对象，最后一行代码中，变量str内容的功能是哪一项？（    ）
+contents=soup.select('.hot')
+     for items in contents:
+           item=items.select('li')
+           for i in item:
+                  str=i.a['href'] 
+A．超级链接的网址
+B．列表中的一个数据项
+C．超级链接的属性信息
+D．超级链接的格式信息
+（8）requests.get()函数的返回值类型是哪一项？（    ）
+A．String
+B．text
+C．Response
+D．Request
+2．简答题
+（1）简述网络爬虫的工作原理。
+（2）请列举出beautifulsoup4库解析文档树的主要方法和属性。
+（3）在urllib.request.urlopen(req)方法中，参数req可以有哪几种情况，请通过例子进行说明。
+（4）requests库的get()方法返回Response对象，该对象的status_code、text、encoding等属性的含义是什么？
+（5）beautifulsoup4库可以用CSS选择器来筛选页面元素，对应的方法是什么？举例说明。
+3．阅读程序
+下面程序实现的功能是爬取“中国知网”主页页面前4K字节的信息。请在【代码1】【代码2】处补充合适的内容。
+import requests
+
+def getHTMLText(url):
+    r=【代码1】
+    r.raise_for_status()
+    r.encoding='UTF-8'  
+    return 【代码2】
+
+url = "http://www.cnki.net"
+text=getHTMLText(url)
+print(text)
+4．编程题
+（1）分别使用urllib库和requests库爬取focus.tianya.cn首页的内容。
+（2）编写程序爬取“辽宁本科教学网”的通知公告页面的信息。
+（http://www.upln.cn/html/Channel_01/Column_0103/index.html）
+
+
+
+
+
+
+
+
+
+
+
+
+
