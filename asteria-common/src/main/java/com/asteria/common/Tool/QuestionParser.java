@@ -1,7 +1,10 @@
 package com.asteria.common.Tool;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class QuestionParser {
@@ -190,6 +193,33 @@ public class QuestionParser {
     private static final int BARE_ANSWER_MAX_LENGTH = 20;
 
     /**
+     * 「答案集中区」的一行：<b>题号 + 答案标签</b>，例：{@code 1.【答案】A} / {@code 2、答案：B} / {@code 3. 正确答案：C}。
+     *
+     * <p>为什么必须单独认它：这一行**同时命中题号行正则**（{@code 1.} 开头），
+     * 而题号判断排在答案判断前面 —— 于是每行答案都被开成一道新题，题干变成「【答案】A」，
+     * 真正的题目全部丢答案（详见 {@link #parseLines} 的 ⓪ 步骤）。
+     *
+     * <p>group 1 = 题号（回填用）；group 2 = 答案原文。
+     */
+    private static final Pattern ANSWER_ZONE_LINE =
+            Pattern.compile("^\\s*" + LINE_PREFIX
+                    + "(\\d+)\\s*[、.．)）]\\s*"
+                    + "(?:【\\s*(?:正确答案|参考答案|答案)\\s*】|(?:正确答案|参考答案|答案)\\s*[:：])\\s*(.+)$");
+
+    /**
+     * 判定「答案集中区」至少要有几行答案。
+     *
+     * <p>为什么是 2 而不是 3：单章的练习册、小样张只有两三道题的情况很常见，
+     * 阈值定 3 会让小文件漏判；而两行"数字+点+答案标签"且**编号递增**的行，
+     * 在正常题目区里几乎不可能出现（题目区里答案不会带题号前缀）。
+     */
+    private static final int ANSWER_ZONE_MIN_LINES = 2;
+
+    /** 答案区内部允许夹的连续空行/分隔线行数（答案册常见"分页分隔"） */
+    private static final int ANSWER_ZONE_MAX_GAP = 2;
+
+
+    /**
      * 行内选项的"标记"：行首或空白之后，一个字母 + 分隔符。
      *
      * <p>{@code (?:^|\s)} 这个前置断言很关键：它保证字母是"独立开头"的，
@@ -224,7 +254,17 @@ public class QuestionParser {
         String currentChapter = null;                      // 最近一个章节标题；null = 还没遇到章节
         String currentSectionLabel = null;                 // 最近一个"题型小节"的原始标签（如「阅读程序」）；null = 本节没写
 
+        // ⓪ 先扫一遍，把「答案集中区」圈出来（一次性、整段跳过，循环结束后按题号回填）
+        AnswerZone answerZone = detectAnswerZone(lines);
+
         for (int i = 0; i < lines.size(); i++) {
+            // ⓪.1 答案集中区的每一行都长得像题号（1.【答案】A）—— 绝不能进切题逻辑，
+            //      否则每行答案都会变成一道以「【答案】A」为题干、无选项无答案的「幽灵题」，
+            //      而真正的题目全部丢答案。这是"题数看起来还对得上、日志一片正常"的最危险形态。
+            if (answerZone != null && i >= answerZone.from() && i <= answerZone.to()) {
+                continue;
+            }
+
             String line = lines.get(i);
 
             // ① 章节标题行：切换"当前章节"，这行本身不进题目块、也不记可疑
@@ -275,7 +315,126 @@ public class QuestionParser {
         if (!block.isEmpty()) {
             questions.add(buildQuestion(block, blockStartLine, currentChapter, currentSectionLabel));
         }
+
+        // ⑤ 答案集中区 → 按题号回填（题干自带的答案优先，冲突只记可疑、不覆盖）
+        if (answerZone != null) {
+            backfillAnswers(questions, answerZone);
+        }
         return questions;
+    }
+
+    /**
+     * 圈出「答案集中区」：连续（允许最多 {@value #ANSWER_ZONE_MAX_GAP} 行空行/分隔线）多行
+     * {@code 题号 + 答案标签}，且题号<b>递增</b>。
+     *
+     * <p>为什么要"递增"这一条：题号回退说明进入了另一份卷子/另一章的答案，
+     * 再往下扫只会把后面章节的答案错配到前面的题上。
+     *
+     * @return 没找到 → <b>null</b>；找到 → 行号区间 + 题号→答案
+     */
+    private AnswerZone detectAnswerZone(List<String> lines) {
+        int n = lines.size();
+        int i = 0;
+        while (i < n) {
+            if (!ANSWER_ZONE_LINE.matcher(lines.get(i)).matches()) {
+                i++;
+                continue;
+            }
+
+            int start = i;
+            int last = i;
+            int count = 1;
+            int prevNo = numberOfAnswerLine(lines.get(i));
+
+            int j = i + 1;
+            while (j < n) {
+                Matcher m = ANSWER_ZONE_LINE.matcher(lines.get(j));
+                if (m.matches()) {
+                    int no = numberOfAnswerLine(lines.get(j));
+                    if (no <= prevNo) {
+                        break;          // 题号回退 → 这一片答案区到此为止
+                    }
+                    count++;
+                    prevNo = no;
+                    last = j;
+                    j++;
+                    continue;
+                }
+                String text = lines.get(j);
+                if (text.isBlank() || SEPARATOR_PATTERN.matcher(text).matches()) {
+                    if (j - last > ANSWER_ZONE_MAX_GAP) {
+                        break;
+                    }
+                    j++;                // 空行/分隔线不算断
+                    continue;
+                }
+                break;
+            }
+
+            if (count >= ANSWER_ZONE_MIN_LINES) {
+                return new AnswerZone(start, last, collectZoneAnswers(lines, start, last));
+            }
+            i = Math.max(last + 1, i + 1);   // 这一行只是孤立的，继续往后找
+        }
+        return null;
+    }
+
+    /** 取答案区行里的题号（解析失败返回 -1，调用方会把它排除掉） */
+    private int numberOfAnswerLine(String line) {
+        Matcher m = ANSWER_ZONE_LINE.matcher(line);
+        if (!m.matches()) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(m.group(1));
+        } catch (NumberFormatException e) {
+            return -1;      // 超长数字串，不可能是题号
+        }
+    }
+
+    /** 把答案区的「题号 → 答案」收成有序映射（同号重复时以第一条为准） */
+    private Map<Integer, String> collectZoneAnswers(List<String> lines, int from, int to) {
+        Map<Integer, String> answers = new LinkedHashMap<>();
+        for (int i = from; i <= to; i++) {
+            Matcher m = ANSWER_ZONE_LINE.matcher(lines.get(i));
+            if (!m.matches()) {
+                continue;
+            }
+            int no = numberOfAnswerLine(lines.get(i));
+            if (no > 0) {
+                answers.putIfAbsent(no, stripBold(m.group(2)));
+            }
+        }
+        return answers;
+    }
+
+    /**
+     * 按题号把答案回填到题目上。
+     *
+     * <p>三条纪律：
+     * <ol>
+     *   <li><b>题干自带的答案优先</b> —— 就地答案比末尾汇总表更可信，冲突只记可疑；</li>
+     *   <li><b>题号越界就跳过</b> —— 答案区可能覆盖整本册子，而当前文件只解析出其中几章；</li>
+     *   <li><b>冲突要留痕</b> —— 静默取一个，等于把"两份答案不一致"这件事藏起来。</li>
+     * </ol>
+     */
+    private void backfillAnswers(List<RawQuestion> questions, AnswerZone zone) {
+        for (Map.Entry<Integer, String> entry : zone.answers().entrySet()) {
+            int index = entry.getKey() - 1;      // 题号从 1 开始，列表从 0 开始
+            if (index < 0 || index >= questions.size()) {
+                continue;
+            }
+            String fromZone = stripBold(entry.getValue());
+            RawQuestion question = questions.get(index);
+            String existing = question.getRawAnswer();
+
+            if (existing == null || existing.isBlank()) {
+                question.setRawAnswer(fromZone);
+            } else if (!existing.equals(fromZone) && question.getSuspicious() != null) {
+                question.getSuspicious().add(
+                        "答案区与题内答案不一致：题内=" + existing + "，答案区=" + fromZone + "（已保留题内答案）");
+            }
+        }
     }
 
     /**
@@ -619,6 +778,16 @@ public class QuestionParser {
 
     /** 题干拆分结果：题干 + 从题干里拆出来的内联选项 + 可能的内联答案 */
     private record StemAndOptions(String stem, List<QuestionOption> options, String inlineAnswer) {
+    }
+
+    /**
+     * 「答案集中区」的识别结果。
+     *
+     * @param from    起始行下标（含）
+     * @param to      结束行下标（含）
+     * @param answers 题号 → 答案原文
+     */
+    private record AnswerZone(int from, int to, Map<Integer, String> answers) {
     }
 
     /** 内联选项拆分结果：前缀（题干）+ 选项 + 尾部答案 */
