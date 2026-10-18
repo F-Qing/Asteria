@@ -26,6 +26,7 @@ public class QuestionParser {
                     + "|【\\s*\\d+\\s*】"
                     + "|\\[\\s*\\d+\\s*\\]"
                     + "|第\\s*\\d+\\s*题"
+                    + "|[\u2460-\u2473]"
                     + "|[（(]\\s*\\d+\\s*[）)]"
                     + "|\\d+\\s*[、.．)）]"
                     + ")";
@@ -59,6 +60,7 @@ public class QuestionParser {
                     + "|\\[\\s*\\d+\\s*\\]"
                     + "|第\\s*\\d+\\s*题"
                     + "|[（(]\\s*\\d+\\s*[）)]"
+                    + "|[\\u2460-\\u2473]\\s*[、.．]?\\s*\\S"
                     + "|\\d+\\s*[、.．)）]\\s*\\S"
                     + ")");
 
@@ -75,7 +77,7 @@ public class QuestionParser {
     private static final Pattern NUMBERED_STEM_PATTERN =
             Pattern.compile("^\\s*" + LINE_PREFIX
                     + "(?:[（(]\\s*\\d+\\s*[）)]|\\d+\\s*[、.．)）]|第\\s*\\d+\\s*题"
-                    + "|【\\s*第\\s*\\d+\\s*题\\s*】|【\\s*\\d+\\s*】|\\[\\s*\\d+\\s*\\])"
+                    + "|【\\s*第\\s*\\d+\\s*题\\s*】|【\\s*\\d+\\s*】|\\[\\s*\\d+\\s*\\]|[\\u2460-\\u2473])"
                     + "\\s*[、.．:：]?\\s*\\*{0,2}\\s*(.+?)\\s*$");
 
     /**
@@ -220,13 +222,19 @@ public class QuestionParser {
 
 
     /**
-     * 行内选项的"标记"：行首或空白之后，一个字母 + 分隔符。
+     * 行内选项的"标记"：行首/空白之后，一个字母 + 分隔符；或<b>被括号包住的字母</b>（{@code (A) 甲}）。
      *
-     * <p>{@code (?:^|\s)} 这个前置断言很关键：它保证字母是"独立开头"的，
+     * <p>前置断言 {@code (?:^|(?<=\s))} 很关键：它保证字母是"独立开头"的，
      * 不会把 {@code e.g.}、{@code U.S.}、{@code 答A.} 这类词内的点号误判成选项标记。
+     *
+     * <p>括号形式额外要求<b>右括号后必须跟空白或行尾</b>（{@code (?=\s|$)}）。这条不是洁癖：
+     * 正文里的「比较（A）和（B）两种方案」如果也拆，会得到 {@code A=和}、{@code B=两种方案}
+     * 这种垃圾选项 —— 那比不拆更糟。而教材里真正的括号选项永远写成 {@code (A) 甲}，中间有空格。
      */
     private static final Pattern INLINE_OPTION_MARK =
-            Pattern.compile("(?:^|\\s)([A-Za-zＡ-Ｚａ-ｚ])\\s*[.、．:：)）]\\s*");
+            Pattern.compile("(?:^|(?<=\\s))"
+                    + "(?:([A-Za-zＡ-Ｚａ-ｚ])\\s*[.、．:：)）]"
+                    + "|[（(【\\[]\\s*([A-Za-zＡ-Ｚａ-ｚ])\\s*[)）\\]】](?=\\s|$))");
 
     /** 代码行特征：含这些就别做行内选项拆分，免得把 Python/C 代码里的 {@code A.} 之类误切 */
     private static final Pattern CODE_LIKE_PATTERN =
@@ -257,6 +265,9 @@ public class QuestionParser {
         // ⓪ 先扫一遍，把「答案集中区」圈出来（一次性、整段跳过，循环结束后按题号回填）
         AnswerZone answerZone = detectAnswerZone(lines);
 
+        // 单行答案（没构成答案区）的题号 → 答案，和答案区一起参与回填
+        Map<Integer, String> looseAnswers = new LinkedHashMap<>();
+
         for (int i = 0; i < lines.size(); i++) {
             // ⓪.1 答案集中区的每一行都长得像题号（1.【答案】A）—— 绝不能进切题逻辑，
             //      否则每行答案都会变成一道以「【答案】A」为题干、无选项无答案的「幽灵题」，
@@ -266,6 +277,17 @@ public class QuestionParser {
             }
 
             String line = lines.get(i);
+
+            // ⓪.2 单行答案（只有一行 `1.【答案】A`，够不上「答案区」的 2 行门槛）：
+            //      同样不能当题号，否则又是一道幽灵题；但这行要收下来，稍后按题号回填。
+            //      放在章节/题号判断之前，是因为它长得和题号行一模一样，必须先截住。
+            if (ANSWER_ZONE_LINE.matcher(line).matches()) {
+                int answerNo = numberOfAnswerLine(line);
+                if (answerNo > 0) {
+                    looseAnswers.putIfAbsent(answerNo, zoneAnswerText(line));
+                    continue;
+                }
+            }
 
             // ① 章节标题行：切换"当前章节"，这行本身不进题目块、也不记可疑
             String chapterTitle = matchChapter(line);
@@ -316,9 +338,12 @@ public class QuestionParser {
             questions.add(buildQuestion(block, blockStartLine, currentChapter, currentSectionLabel));
         }
 
-        // ⑤ 答案集中区 → 按题号回填（题干自带的答案优先，冲突只记可疑、不覆盖）
+        // ⑤ 答案集中区 + 单行答案 → 按题号回填（题干自带的答案优先，冲突只记可疑、不覆盖）
         if (answerZone != null) {
-            backfillAnswers(questions, answerZone);
+            backfillAnswers(questions, answerZone.answers());
+        }
+        if (!looseAnswers.isEmpty()) {
+            backfillAnswers(questions, looseAnswers);
         }
         return questions;
     }
@@ -396,16 +421,18 @@ public class QuestionParser {
     private Map<Integer, String> collectZoneAnswers(List<String> lines, int from, int to) {
         Map<Integer, String> answers = new LinkedHashMap<>();
         for (int i = from; i <= to; i++) {
-            Matcher m = ANSWER_ZONE_LINE.matcher(lines.get(i));
-            if (!m.matches()) {
-                continue;
-            }
             int no = numberOfAnswerLine(lines.get(i));
             if (no > 0) {
-                answers.putIfAbsent(no, stripBold(m.group(2)));
+                answers.putIfAbsent(no, zoneAnswerText(lines.get(i)));
             }
         }
         return answers;
+    }
+
+    /** 取「答案区一行」里的答案原文（已剥加粗） */
+    private String zoneAnswerText(String line) {
+        Matcher m = ANSWER_ZONE_LINE.matcher(line);
+        return m.matches() ? stripBold(m.group(2)) : "";
     }
 
     /**
@@ -418,8 +445,8 @@ public class QuestionParser {
      *   <li><b>冲突要留痕</b> —— 静默取一个，等于把"两份答案不一致"这件事藏起来。</li>
      * </ol>
      */
-    private void backfillAnswers(List<RawQuestion> questions, AnswerZone zone) {
-        for (Map.Entry<Integer, String> entry : zone.answers().entrySet()) {
+    private void backfillAnswers(List<RawQuestion> questions, Map<Integer, String> answers) {
+        for (Map.Entry<Integer, String> entry : answers.entrySet()) {
             int index = entry.getKey() - 1;      // 题号从 1 开始，列表从 0 开始
             if (index < 0 || index >= questions.size()) {
                 continue;
@@ -628,6 +655,8 @@ public class QuestionParser {
             }
         }
 
+        // 10) 答案原样保留（不截断、不归一化）：`B。因为甲不对` 整段留下，
+        //     下游 AnswerTexts 只取开头那段选项字母，不会把解析里的英文当成多选题的证据。
         return new RawQuestion(rawType, rawStem, rawOptions, rawAnswer, chapterName, startLine, suspicious);
     }
 
@@ -672,7 +701,9 @@ public class QuestionParser {
         List<String> letters = new ArrayList<>();        // 每个标记的字母（已归一化）
 
         while (matcher.find()) {
-            letters.add(normalizeLetter(matcher.group(1)));
+            // 两种写法：group(1) 是"A."式的裸字母，group(2) 是"(A)"式括号字母
+            String letter = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+            letters.add(normalizeLetter(letter));
             markStarts.add(matcher.start());
             contentStarts.add(matcher.end());
         }
