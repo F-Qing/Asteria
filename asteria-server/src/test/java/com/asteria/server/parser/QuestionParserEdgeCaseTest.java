@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -105,5 +106,58 @@ class QuestionParserEdgeCaseTest {
         assertEquals("AC", AnswerTexts.letters("A、C"), "顿号分隔的多选");
         assertEquals("AC", AnswerTexts.letters("A和C都对"), "和字连接的多选");
         assertEquals("", AnswerTexts.letters("三次握手需要三次报文"), "简答题答案里没有选项字母");
+    }
+
+    @Test
+    @DisplayName("中文数字题号：一、下列哪项正确")
+    void 中文数字题号() {
+        RawQuestion q = only("一、下列哪项正确\nA. 甲\nB. 乙");
+        assertEquals("下列哪项正确", q.getRawStem());
+        assertEquals("A=甲,B=乙", optionsOf(q));
+    }
+
+    @Test
+    @DisplayName("中文数字题号：简答题靠题干特征词认出来")
+    void 中文数字题号之简答题() {
+        List<RawQuestion> list = parse("""
+                一、简述 TCP 三次握手的流程
+                二、说明 TCP 与 UDP 的区别
+                """);
+        assertEquals(2, list.size(), "两行都是题，实际 " + list.size() + " 道");
+        assertEquals("简述 TCP 三次握手的流程", list.get(0).getRawStem());
+        assertEquals("说明 TCP 与 UDP 的区别", list.get(1).getRawStem());
+    }
+
+    @Test
+    @DisplayName("负例：一、概述 是小节标题，既不能变废题，也不能让题型串到下一节")
+    void 中文数字小节标题不产生废题() {
+        List<RawQuestion> list = parse("""
+                一、概述
+                1. 第一题
+                A. 甲
+                B. 乙
+                """);
+        assertEquals(1, list.size(), "「一、概述」不该被当成题目，实际 " + list.size() + " 道");
+        assertEquals("第一题", list.get(0).getRawStem());
+
+        // 小节标题还要让上一节的「题型小节」失效，否则下一节会继承错的题型
+        List<RawQuestion> mixed = parse("""
+                三、简述题
+                一、简述 TCP 三次握手的流程
+                四、概述
+                1. 最后一题
+                A. 是
+                B. 否
+                """);
+        assertEquals(2, mixed.size());
+        assertEquals("简答题", mixed.get(0).getRawType(), "「三、简述题」是题型小节，应被继承");
+        assertNull(mixed.get(1).getRawType(), "「四、概述」之后不能还继承上一节的题型");
+    }
+
+    @Test
+    @DisplayName("负例：一、选择题（每题2分）仍按题型小节处理")
+    void 带括号说明的题型小节() {
+        assertTrue(parse("一、选择题（每题 2 分，共 20 分）").isEmpty(),
+                "带括号说明的题型小节不该被当成题目");
     }
 }

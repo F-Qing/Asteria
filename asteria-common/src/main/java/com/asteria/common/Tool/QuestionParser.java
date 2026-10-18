@@ -77,7 +77,8 @@ public class QuestionParser {
     private static final Pattern NUMBERED_STEM_PATTERN =
             Pattern.compile("^\\s*" + LINE_PREFIX
                     + "(?:[（(]\\s*\\d+\\s*[）)]|\\d+\\s*[、.．)）]|第\\s*\\d+\\s*题"
-                    + "|【\\s*第\\s*\\d+\\s*题\\s*】|【\\s*\\d+\\s*】|\\[\\s*\\d+\\s*\\]|[\\u2460-\\u2473])"
+                    + "|【\\s*第\\s*\\d+\\s*题\\s*】|【\\s*\\d+\\s*】|\\[\\s*\\d+\\s*\\]|[\\u2460-\\u2473]"
+                    + "|[一二三四五六七八九十百]+\\s*[、.．])"
                     + "\\s*[、.．:：]?\\s*\\*{0,2}\\s*(.+?)\\s*$");
 
     /**
@@ -86,10 +87,42 @@ public class QuestionParser {
      * <p>它是"下面这节是什么题型"的标签，**不是题号**。不认得它就会被当成题号，
      * 把一整节的题全吞进同一个块里（块里没有题干 → 全军覆没）。
      * 整行匹配（{@code $} 收尾），所以「1．判断题的做法是…」这种真题干不会被误伤。
+     *
+     * <p>允许题型词后面跟一段括号说明：{@code 一、选择题（每题 2 分，共 20 分）}——
+     * 这类写法在整卷真题里非常常见，不认就会被当成题号，凭空多出一道「题干=选择题（每题2分）」的废题。
      */
     private static final Pattern SECTION_TYPE_PATTERN =
             Pattern.compile("^\\s*(?:\\d+|[一二三四五六七八九十]+)\\s*[、.．]?\\s*"
-                    + "(选择题|单选题|多选题|判断题|填空题|简答题|编程题|程序设计题|阅读程序题?|操作题)\\s*$");
+                    + "(选择题|单项选择题|多项选择题|单选题|多选题|判断题|填空题|简答题|简述题|"
+                    + "论述题|计算题|分析题|应用题|名词解释题?|综合题|材料题|"
+                    + "编程题|程序设计题|阅读程序题?|操作题)"
+                    + "(?:\\s*[（(][^）)]*[）)])?\\s*$");
+
+    /**
+     * 中文数字题号：<b>一、下列哪项正确</b> / <b>二．说明 TCP 与 UDP 的区别</b>。
+     *
+     * <p>⚠️ 这是本文件里<b>唯一一个"身份歧义"的题号</b>：
+     * 同一行 {@code 一、选择题} 是**题型小节**，{@code 一、下列哪项正确} 是**题号**，
+     * 光看这一行分不出来，所以 {@link #matchChineseNumberHeader} 要做「后向确认」。
+     *
+     * <p>group 1 = 中文序号；group 2 = 题号后面的内容（题干 / 小节名）。
+     */
+    private static final Pattern CHINESE_NUMBER_HEADER =
+            Pattern.compile("^\\s*([一二三四五六七八九十百]{1,3})\\s*[、.．]\\s*(\\S.*)$");
+
+    /**
+     * 题干特征词：{@code 一、简述…} / {@code 一、下列…} / {@code 一、计算…} 一看就是题，不是小节标题。
+     *
+     * <p>为什么不用"含选择题/判断题"这种判据：{@code 一、判断下列说法的正误} 是**真题干**，
+     * 含「判断」两个字；按"含题型词就当小节"处理，会把这道题连同后面的选项整段吞掉 ——
+     * 那是静默丢题，比"0 道题"更糟。
+     */
+    private static final Pattern STEM_LIKE_START =
+            Pattern.compile("^(?:下列|以下|关于|针对|简述|试述|叙述|说明|什么|如何|怎样|哪|请|"
+                    + "计算|分析|论述|比较|举例|写出|画出|判断|选择|填空|简答|名词解释|为什么|有何)");
+
+    /** 后向确认只看题号行后面这几行（再远就不可信了） */
+    private static final int CONFIRM_LOOKAHEAD = 2;
 
     /**
      * 习题小节标题行：<b>习  题  1</b>（整行只有它）。教材里用它划分章节，
@@ -315,7 +348,21 @@ public class QuestionParser {
                 continue;
             }
 
-            boolean isHeader = QUESTION_HEADER.matcher(line).find();
+            // ①.6 中文数字开头的行：可能是题号（一、下列…），也可能是小节标题（一、概述）
+            String chineseStem = matchChineseNumberHeader(line, lines, i);
+            if (chineseStem == null && isChineseNumberLine(line)) {
+                // 小节标题：结束上一段，并且让「题型小节」失效 ——
+                // 不让它失效的话，下一节的题会继承上一节的题型（一、简述题 后面接 四、概述 → 全变简答题）
+                if (!block.isEmpty()) {
+                    questions.add(buildQuestion(block, blockStartLine, currentChapter, currentSectionLabel));
+                    block.clear();
+                    blockStartLine = 0;
+                }
+                currentSectionLabel = null;
+                continue;
+            }
+
+            boolean isHeader = chineseStem != null || QUESTION_HEADER.matcher(line).find();
 
             if (isHeader) {
                 // ② 手里还有上一道题 → 先交出去
@@ -492,11 +539,72 @@ public class QuestionParser {
             case "多选题" -> "多选题";
             case "判断题" -> "判断题";
             case "填空题" -> "填空题";
-            case "简答题", "编程题", "程序设计题", "操作题" -> "简答题";
+            // 简述/论述/计算/分析/名词解释在库里都按"简答题"存（没有单独的枚举）
+            case "简答题", "简述题", "论述题", "计算题", "分析题", "应用题", "名词解释", "名词解释题",
+                 "编程题", "程序设计题", "操作题" -> "简答题";
             case "阅读程序", "阅读程序题" -> options.isEmpty() ? "简答题" : "";
             // 「选择题」里单选多选混排：不写死，交给判型器
             default -> "";
         };
+    }
+
+    /**
+     * 这一行是不是「中文数字题号」（{@code 一、} / {@code 二．}）。
+     *
+     * <p>为什么要单独一个方法：中文序号有<b>两种身份</b> ——
+     * {@code 一、选择题} 是题型小节、{@code 一、下列哪项正确} 是题号，光看这一行分不出来。
+     * 题型小节在上一步已经被 {@link #SECTION_TYPE_PATTERN} 精确匹配掉了，
+     * 剩下的还要再确认一次「像不像题」，否则 {@code 一、概述} 这种小节标题会变成一道废题。
+     *
+     * @return 像题 → 题号后面的内容（题干）；不像题 / 不是这种写法 → <b>null</b>（当小节标题忽略）
+     */
+    private String matchChineseNumberHeader(String line, List<String> lines, int index) {
+        if (line == null || line.isBlank()) {
+            return null;
+        }
+        var m = CHINESE_NUMBER_HEADER.matcher(line.trim());
+        if (!m.matches()) {
+            return null;
+        }
+        String rest = stripBold(m.group(2)).trim();
+        if (rest.isEmpty()) {
+            return null;
+        }
+        return looksLikeQuestion(rest, lines, index) ? rest : null;
+    }
+
+    /**
+     * 这一行是不是「中文数字开头」（{@code 一、xxx}），不管它是题号还是小节标题。
+     *
+     * <p>用来分辨第三种情况：既不是题型小节、也确认不了是题 → 当小节标题处理，
+     * 顺便让上一节的「题型小节」失效。
+     */
+    private boolean isChineseNumberLine(String line) {
+        return line != null && CHINESE_NUMBER_HEADER.matcher(line.trim()).matches();
+    }
+
+    /**
+     * 「这一行像不像一道题」的两条判据（任一成立即可）。
+     *
+     * <p>判据一：以题干特征词开头（{@code 下列/简述/计算…}）—— 不用往后看，成本最低。
+     * <br>判据二：<b>后向确认</b> —— 紧跟的那行是选项或答案标签，等于拿到了硬证据。
+     *
+     * <p>两条都不成立（如 {@code 一、概述}）就当小节标题放过：宁可不认，也不凭空造题。
+     */
+    private boolean looksLikeQuestion(String rest, List<String> lines, int index) {
+        if (STEM_LIKE_START.matcher(rest).find()) {
+            return true;
+        }
+        for (int j = index + 1; j < lines.size() && j <= index + CONFIRM_LOOKAHEAD; j++) {
+            String next = lines.get(j);
+            if (next.isBlank() || SEPARATOR_PATTERN.matcher(next).matches()) {
+                continue;
+            }
+            // 只看紧跟的第一条有内容的行：是选项/答案 → 认；是别的东西（如下一道小题）→ 不认
+            return OPTION_PATTERN.matcher(next).matches()
+                    || ANSWER_LABEL_PATTERN.matcher(next).matches();
+        }
+        return false;
     }
 
     /**
